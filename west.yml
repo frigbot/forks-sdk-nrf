@@ -37,6 +37,8 @@ manifest:
       url-base: https://github.com/ant-nrfconnect
     - name: babblesim
       url-base: https://github.com/BabbleSim
+    - name: frigbot
+      url-base: https://github.com/frigbot
 
   # If not otherwise specified, the projects below should be obtained
   # from the ncs remote.
@@ -58,8 +60,9 @@ manifest:
     # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/zephyr/introduction/index.html
     # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/zephyr/guides/modules.html
     - name: zephyr
-      repo-path: sdk-zephyr
-      revision: v3.3.99-ncs1
+      remote: frigbot
+      repo-path: forks-zephyr
+      revision: frigbot-fork-v3.3.99-ncs1
       import:
         # In addition to the zephyr repository itself, NCS also
         # imports the contents of zephyr/west.yml at the above
