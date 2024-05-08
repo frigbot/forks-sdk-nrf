@@ -7,12 +7,16 @@
 #ifndef SLM_AT_FOTA_
 #define SLM_AT_FOTA_
 
-/**@file slm_at_fota.h
+/** @file slm_at_fota.h
  *
  * @brief Vendor-specific AT command for FOTA service.
  * @{
  */
-enum fota_stages {
+
+#include <stdbool.h>
+#include <stdint.h>
+
+enum fota_stage {
 	FOTA_STAGE_INIT,
 	FOTA_STAGE_DOWNLOAD,
 	FOTA_STAGE_DOWNLOAD_ERASE_PENDING,
@@ -27,10 +31,10 @@ enum fota_status {
 	FOTA_STATUS_CANCELLED
 };
 
-/**
- * @brief Define SLM specified FOTA type for Bootloader
- */
-#define SLM_DFU_TARGET_IMAGE_TYPE_BL1	(DFU_TARGET_IMAGE_TYPE_MODEM_DELTA + 1)
+extern uint8_t slm_fota_type; /* FOTA image type. */
+extern enum fota_stage slm_fota_stage; /* Current stage of FOTA process. */
+extern enum fota_status slm_fota_status; /* FOTA process status. */
+extern int32_t slm_fota_info; /* FOTA download percentage or failure cause in case of error. */
 
 /**
  * @brief Initialize FOTA AT command parser.
@@ -50,9 +54,18 @@ int slm_at_fota_uninit(void);
 
 /**
  * @brief FOTA post-process after reboot.
- *
  */
 void slm_fota_post_process(void);
-/** @} */
 
+/**
+ * @brief Finishes the full modem firmware update.
+ *
+ * This is to be called after the application or modem
+ * has been rebooted and a full modem firmware update is ongoing.
+ */
+#if defined(CONFIG_SLM_FULL_FOTA)
+void slm_finish_modem_full_dfu(void);
+#endif
+
+/** @} */
 #endif /* SLM_AT_FOTA_ */

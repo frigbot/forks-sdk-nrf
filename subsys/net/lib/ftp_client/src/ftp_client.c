@@ -58,19 +58,33 @@ static struct data_task {
 } data_task_param;
 
 static bool ftp_inactivity;
+static atomic_t data_task_running;
 
 static int parse_return_code(const uint8_t *message, int success_code)
 {
-	char success_code_str[6]; /* max 1xxxx*/
-	int ret = FTP_CODE_500;
-
 	if (success_code == FTP_CODE_ANY) {
 		return success_code;
 	}
+	int ret = FTP_CODE_500;
 
-	sprintf(success_code_str, "%d ", success_code);
-	if (strstr(message, success_code_str)) {
-		ret = success_code;
+	while (true) {
+		char *endptr;
+		int reply_code = strtol(message, &endptr, 10);
+
+		/* Strict parsing of "%d ". */
+		if (reply_code && endptr && *endptr == ' ') {
+			ret = reply_code;
+			if (ret == success_code) {
+				break;
+			}
+		}
+
+		/* No reply code on this line. Go to the next one. */
+		message = strstr(message, "\r\n");
+		if (!message) {
+			break;
+		}
+		message += 2;
 	}
 
 	return ret;
@@ -346,26 +360,31 @@ static void do_ftp_recv_data(const char *pasv_msg)
 
 static int poll_data_task_done(void)
 {
-	int ret = -ENODATA;
-	int wait_time = 0;
+	int ret;
+	unsigned int wait_time_ms = 0;
 
 	do {
 		ret = do_ftp_recv_ctrl(true, FTP_CODE_226);
-		if (ret == FTP_CODE_226) {
-			break;
-		}
 		if (ret == -ETIMEDOUT) {
-			if (wait_time < FTP_DATA_TIMEOUT_SEC) {
-				wait_time += CONFIG_FTP_CLIENT_LISTEN_TIME;
-			} else {
-				sprintf(ctrl_buf, "%d Transfer timeout.\r\n", FTP_CODE_910);
-				client.ctrl_callback(ctrl_buf, strlen(ctrl_buf));
+			wait_time_ms += CONFIG_FTP_CLIENT_LISTEN_TIME * MSEC_PER_SEC;
+			if (wait_time_ms / MSEC_PER_SEC >= FTP_DATA_TIMEOUT_SEC) {
 				break;
 			}
-		} else if (ret < 0) {
-			break;
 		}
-	} while (1);
+		/* Wait for 226 Transfer complete. */
+	} while ((ret >= 100 && ret < 200) || ret == -ETIMEDOUT);
+
+	if (ret == FTP_CODE_226) {
+		/* Wait for the data transfer to complete. */
+		while (atomic_get(&data_task_running) == true) {
+			k_sleep(K_MSEC(100));
+			wait_time_ms += 100;
+			if (wait_time_ms / MSEC_PER_SEC >= FTP_DATA_TIMEOUT_SEC) {
+				ret = -ETIMEDOUT;
+				break;
+			}
+		}
+	}
 
 	return ret;
 }
@@ -379,6 +398,14 @@ static void data_task(struct k_work *item)
 	} else if (task_param->task == TASK_SEND) {
 		do_ftp_send_data(task_param->ctrl_msg, task_param->data, task_param->length);
 	}
+	atomic_set(&data_task_running, false);
+}
+
+static int run_data_task(void)
+{
+	atomic_set(&data_task_running, true);
+	k_work_submit_to_queue(&ftp_work_q, &data_task_param.work);
+	return poll_data_task_done();
 }
 
 static void keepalive_handler(struct k_work *work)
@@ -408,45 +435,28 @@ static void keepalive_timeout(struct k_timer *dummy)
 	}
 }
 
-static int host_lookup(const char *hostname, int family, struct sockaddr *sa)
-{
-	int err;
-	struct addrinfo *ai;
-	struct addrinfo hints = {
-		.ai_family = family,
-		.ai_socktype = SOCK_STREAM
-	};
-
-	err = getaddrinfo(hostname, NULL, &hints, &ai);
-	if (err) {
-		LOG_DBG("getaddrinfo(%d) error: %d", family, err);
-		return -EHOSTUNREACH;
-	}
-
-	*sa = *(ai->ai_addr);
-	client.family = family;
-	freeaddrinfo(ai);
-	return 0;
-}
-
 int ftp_open(const char *hostname, uint16_t port, int sec_tag)
 {
-	int ret;
-
 	if (client.connected) {
 		LOG_ERR("FTP already connected");
 		return -EINVAL;
 	}
+	int ret;
+	struct addrinfo *ai;
 
-	/* Attempt IPv6 resolution, fallback to IPv4 if failed */
-	ret = host_lookup(hostname, AF_INET6, (struct sockaddr *)(&client.remote6));
+	/* Resolve the hostname in the preferred IP version .*/
+	ret = getaddrinfo(hostname, NULL, NULL, &ai);
 	if (ret) {
-		ret = host_lookup(hostname, AF_INET, (struct sockaddr *)(&client.remote));
-		if (ret) {
-			LOG_ERR("Failed to parse remote host");
-			return -EHOSTUNREACH;
-		}
+		LOG_ERR("Failed to resolve hostname (\"%s\"): %s", hostname, gai_strerror(ret));
+		return -EHOSTUNREACH;
 	}
+	client.family = ai->ai_family;
+	if (client.family == AF_INET) {
+		memcpy(&client.remote, ai->ai_addr, sizeof(client.remote));
+	} else {
+		memcpy(&client.remote6, ai->ai_addr, sizeof(client.remote6));
+	}
+	freeaddrinfo(ai);
 
 	/* open control socket */
 	if (sec_tag == INVALID_SEC_TAG) {
@@ -648,10 +658,7 @@ int ftp_list(const char *options, const char *target)
 	}
 	ret = do_ftp_send_ctrl(list_cmd, strlen(list_cmd));
 
-	/* Set up data connection */
-	k_work_submit_to_queue(&ftp_work_q, &data_task_param.work);
-
-	return poll_data_task_done();
+	return run_data_task();
 }
 
 int ftp_cwd(const char *folder)
@@ -756,15 +763,7 @@ int ftp_get(const char *file)
 		return -EIO;
 	}
 
-	/* Set up data connection */
-	k_work_submit_to_queue(&ftp_work_q, &data_task_param.work);
-
-	ret = poll_data_task_done();
-	if (ret == FTP_CODE_226) {
-		client.ctrl_callback(ctrl_buf, strlen(ctrl_buf));
-	}
-
-	return ret;
+	return run_data_task();
 }
 
 int ftp_put(const char *file, const uint8_t *data, uint16_t length, int type)
@@ -824,8 +823,7 @@ int ftp_put(const char *file, const uint8_t *data, uint16_t length, int type)
 
 	/* Now send data if any */
 	if (data != NULL && length > 0) {
-		k_work_submit_to_queue(&ftp_work_q, &data_task_param.work);
-		ret = poll_data_task_done();
+		ret = run_data_task();
 	} else {
 		ret = FTP_CODE_226;
 	}

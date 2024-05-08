@@ -14,8 +14,6 @@
 #include "mesh/access.h"
 #include "shell_utils.h"
 
-extern int errno;
-
 struct shell_model_instance {
 	uint16_t addr;
 	uint8_t elem_idx;
@@ -24,7 +22,7 @@ struct shell_model_instance {
 struct sensor_value shell_model_strtosensorval(const char *str, int *err)
 {
 	int temp_err = 0;
-	struct sensor_value out;
+	struct sensor_value out = { 0 };
 
 	double val = shell_model_strtodbl(str, &temp_err);
 
@@ -264,6 +262,11 @@ int shell_vnd_model_instances_get_all(const struct shell *shell, uint16_t mod_id
 
 int shell_model_cmds_help(const struct shell *shell, size_t argc, char **argv)
 {
+	shell_print(
+		shell,
+		"\nFor a detailed description of the commands and arguments in this shell module,\n"
+		"please refer to the nRF Connect SDK documentation online.\n");
+
 	if (argc == 1) {
 		shell_help(shell);
 		return 1;

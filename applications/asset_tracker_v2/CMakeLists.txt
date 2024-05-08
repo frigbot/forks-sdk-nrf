@@ -35,4 +35,11 @@ if (CONFIG_BOARD_QEMU_X86 OR CONFIG_BOARD_NATIVE_POSIX)
         # Make folder containing certificates global so that it can be located by the configured
         # cloud library.
         zephyr_include_directories(src/cloud-certs)
+
+        target_compile_options(app PRIVATE
+	        -DCONFIG_LTE_NEIGHBOR_CELLS_MAX=10)
+endif()
+
+if(CONFIG_ASSET_TRACKER_V2_LTO)
+        target_compile_options(app PRIVATE "-flto")
 endif()

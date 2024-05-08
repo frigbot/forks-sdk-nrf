@@ -15,18 +15,17 @@ LOG_MODULE_REGISTER(MODULE, CONFIG_CAF_BLE_SMP_LOG_LEVEL);
 
 static atomic_t event_active = ATOMIC_INIT(false);
 
-
-static int32_t upload_confirm_cb(uint32_t event,
-				 int32_t rc,
-				 bool *abort_more,
-				 void *data,
-				 size_t data_size)
+static enum mgmt_cb_return upload_confirm_cb(uint32_t event,
+					     enum mgmt_cb_return prev_status,
+					     int32_t *rc, uint16_t *group,
+					     bool *abort_more, void *data,
+					     size_t data_size)
 {
 	if (atomic_cas(&event_active, false, true)) {
 		APP_EVENT_SUBMIT(new_ble_smp_transfer_event());
 	}
 
-	return MGMT_ERR_EOK;
+	return MGMT_CB_OK;
 }
 
 static struct mgmt_callback mgmt_callback = {
@@ -57,7 +56,7 @@ static bool app_event_handler(const struct app_event_header *aeh)
 			initialized = true;
 
 			LOG_INF("Service initialized");
-			LOG_INF("MCUboot image version: %s", CONFIG_MCUBOOT_IMAGE_VERSION);
+			LOG_INF("MCUboot image version: %s", CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION);
 			module_set_state(MODULE_STATE_READY);
 		}
 

@@ -1,6 +1,6 @@
 .. _bluetooth_mesh_silvair_enocean:
 
-Bluetooth: Mesh Silvair EnOcean
+Bluetooth mesh: Silvair EnOcean
 ###############################
 
 .. contents::
@@ -191,18 +191,18 @@ This sample uses the following |NCS| libraries:
 
 In addition, it uses the following Zephyr libraries:
 
-* ``include/drivers/hwinfo.h``
+* :file:`include/drivers/hwinfo.h`
 * :ref:`zephyr:kernel_api`:
 
-  * ``include/kernel.h``
+  * :file:`include/kernel.h`
 
 * :ref:`zephyr:bluetooth_api`:
 
-  * ``include/bluetooth/bluetooth.h``
+  * :file:`include/bluetooth/bluetooth.h`
 
 * :ref:`zephyr:bluetooth_mesh`:
 
-  * ``include/bluetooth/mesh.h``
+  * :file:`include/bluetooth/mesh.h`
 
 The sample also uses the following secure firmware component:
 

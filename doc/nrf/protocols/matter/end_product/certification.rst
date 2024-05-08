@@ -53,7 +53,7 @@ The following figure provides an overview of the Matter certification process st
 Initial requirements: Membership at CSA
 =======================================
 
-Before you start applying for the Matter certification, you must join CSA, as detailed in the following table.
+Before you start applying for the Matter certification, you must join CSA, which is the Standards Developing Organization (SDO) for Matter.
 
 .. table::
 
@@ -63,13 +63,15 @@ Before you start applying for the Matter certification, you must join CSA, as de
    | Matter Certification          | Production                | `Join CSA`_                 | Adopter                                |
    +-------------------------------+---------------------------+-----------------------------+----------------------------------------+
 
-Joining CSA allows you to meet the following requirements:
+Joining CSA allows you to meet the following certification requirements:
 
 * Familiarity with the Matter Core Specification, which is the standard for the certification.
   You can download it from the `CSA Specifications Download Request`_ page.
 * Assignment of Vendor ID (VID), which is required when applying for certification.
   You can apply to `CSA's Certification Team`_ to obtain VID.
   The VID codes are valid immediately upon assignment.
+
+If you created your Matter product application using :ref:`matter_samples` as a reference, make sure you have read the `ug_matter_device_certification_matter_samples`_ section before proceeding with the following certification steps.
 
 .. _ug_matter_device_certification_testing:
 
@@ -122,7 +124,7 @@ Certification document templates from Nordic Semiconductor
   .. note::
      Nordic Semiconductor provides just example answers based on the reference SDK applications, which may guide you on how to answer to certain platform-related questions.
      You are still solely responsible for filling original documents according to a product specification.
-     The final approval depends on the Director of Certification in the given Standards Developing Organization (SDO).
+     The final approval depends on the Director of Certification in the given SDO.
 
 PICS
 ++++
@@ -161,6 +163,8 @@ Processing
 During this stage of the certification process, CSA verifies the submission for relevant criteria, including relevant documentation, membership in CSA, completion of testing, and payment of applicable fees.
 The duration of this step depends on the complexity of your application and the length of the review queue.
 
+.. _ug_matter_device_certification_results:
+
 Certification
 =============
 
@@ -186,6 +190,8 @@ These technologies come with their own certification processes governed by diffe
 
 .. ug_matter_certification_sdo_end
 
+.. _ug_matter_device_certification_reqs_mot:
+
 Matter over Thread certification requirements
 =============================================
 
@@ -194,23 +200,75 @@ The following table lists Matter over Thread certification requirements for when
 +-------------------------------+---------------------------+-----------------------------+----------------------------------------+
 | Technology certification      | Stage for certification   | SDO to join                 | Minimum SDO membership level required  |
 +===============================+===========================+=============================+========================================+
+| Matter Certification          | Production                | `Join CSA`_                 | Adopter                                |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
 | Bluetooth QDID                | Production                | `Join Bluetooth SIG`_       | Adopter                                |
 +-------------------------------+---------------------------+-----------------------------+----------------------------------------+
 | Thread Group Certification    | Production                | `Join Thread Group`_        | Implementer                            |
 +-------------------------------+---------------------------+-----------------------------+----------------------------------------+
 
-Bluetooth and Thread certifications can be inherited from Nordic Semiconductor (see the following section).
+Bluetooth and Thread certifications can be inherited from Nordic Semiconductor (see the :ref:`ug_matter_device_certification_reqs_dependent` section below).
+
+You can also find more information about the Thread certification in the :ref:`Thread protocol section <ug_thread_cert>`.
+
+.. _ug_matter_device_certification_reqs_mowifi:
+
+Matter over Wi-Fi certification requirements
+============================================
+
+The following table lists Matter over Wi-Fi certification requirements for when a product moves to production.
+
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Technology certification      | Stage for certification   | SDO to join                 | Minimum SDO membership level required  |
++===============================+===========================+=============================+========================================+
+| Matter Certification          | Production                | `Join CSA`_                 | Adopter                                |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Bluetooth QDID                | Production                | `Join Bluetooth SIG`_       | Adopter                                |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Wi-Fi Alliance Certification  | Production                | `Join Wi-Fi Alliance`_      | Implementer                            |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+
+Bluetooth certification can be inherited from Nordic Semiconductor (see the :ref:`ug_matter_device_certification_reqs_dependent` section below).
+:ref:`Wi-Fi certification <ug_wifi_certification>` is not yet available for inheritance from Nordic Semiconductor.
+
+.. _ug_matter_device_certification_reqs_dual:
+
+Certification requirements for dual protocol scenarios
+======================================================
+
+The following table lists certification requirements for products that offer :ref:`both Thread and Wi-Fi protocol support with Matter <ug_matter_overview_architecture_integration_designs_switchable>`.
+
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Technology certification      | Stage for certification   | SDO to join                 | Minimum SDO membership level required  |
++===============================+===========================+=============================+========================================+
+| Matter Certification          | Production                | `Join CSA`_                 | Adopter                                |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Bluetooth QDID                | Production                | `Join Bluetooth SIG`_       | Adopter                                |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Thread Group Certification    | Production                | `Join Thread Group`_        | Implementer                            |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+| Wi-Fi Alliance Certification  | Production                | `Join Wi-Fi Alliance`_      | Implementer                            |
++-------------------------------+---------------------------+-----------------------------+----------------------------------------+
+
+Bluetooth and Thread certifications can be inherited from Nordic Semiconductor (see the :ref:`ug_matter_device_certification_reqs_dependent` section below).
+:ref:`Wi-Fi certification <ug_wifi_certification>` is not yet available for inheritance from Nordic Semiconductor.
+
+You can also find more information about the Thread certification in the :ref:`Thread protocol section <ug_thread_cert>`.
+
+.. _ug_matter_device_certification_reqs_dependent:
 
 Matter dependent certification inheritance
 ==========================================
 
-If your product uses qualified Bluetooth stack and certified Thread libraries provided as part of the |NCS|, you can *inherit* certification from Nordic Semiconductor, provided that you do not introduce any changes to these stacks.
+If your product uses qualified Bluetooth stack or certified Thread libraries (or both) provided as part of the |NCS|, you can *inherit* certification from Nordic Semiconductor, provided that you do not introduce any changes to these stacks.
 In practice, this means reusing Nordic Semiconductor's certification identifiers, which were obtained as a result of the official certification procedures.
 
+When reusing Nordic Semiconductor's certification identifiers, you still need to join the SDO and meet its requirements to apply for certification by inheritance.
+For example, if you want to inherit Nordic Semiconductor's certification for Matter over Thread, you still need to join organizations listed in :ref:`ug_matter_device_certification_reqs_mot` and meet the inheritance requirements of each of the SDOs.
+
 .. note::
-   The inheritance is granted by the related SDO after you join the organization and apply for certification by inheritance.
-   The procedure differs from SDO to SDO and has different names.
-   For details, contact the appropriate certification body in the SDO.
+      The inheritance procedure differs from SDO to SDO and has different names.
+      For details, contact the appropriate certification body in the SDO.
 
 Certification identifiers
 -------------------------
@@ -274,3 +332,28 @@ This variant is meant for Matter components that use Matter software that was al
    :alt: Matter certification by similarity overview
 
    Matter certification by similarity overview
+
+.. _ug_matter_device_certification_matter_samples:
+
+Certification status of Matter samples
+**************************************
+
+The |NCS| includes several :ref:`matter_samples` that are example implementations of Matter devices.
+The samples are maintained to fulfill Matter certification requirements as closely as possible, but they do not have official Matter compliance certificates.
+You can use them as a reference for creating your own application, but this does not guarantee that your application will pass the Matter certification.
+
+The Matter certification program currently does not provide any form of platform certification, so the product maker is solely reponsible for ensuring that the application used fulfills all Matter certification requirements.
+Before you start the application process for the Matter certification, make sure that the application configuration generated using :file:`.zap` file is compatible with the PICS generated for the certification purpose.
+You can find the information about the specification and the valid PICS for specific Matter stack version that should be used for your product on the `CSA Matter Resource Kit`_ page, in the `Specification` section.
+Especially, make sure that:
+
+* ``FeatureMap`` attributes for all clusters match the desired configuration selected in PICS, and all other cluster requirements related to the specific ``FeatureMap`` value are met.
+* ``ClusterRevision`` attributes for all clusters match the value of the Matter stack version that you want to use for your application certification.
+* ``Attribute List``, ``Accepted Command List`` and ``Generated Command List`` attributes for all clusters contain all the values that need to be there and nothing more.
+
+See the :ref:`ug_matter_creating_accessory` page for how to configure your application using the ZAP Tool.
+
+Before you request the official product `ug_matter_device_certification_testing`_ from ATL, it is recommended to perform in-house certification testing of the product.
+This testing can help you detect problems that could lead to certification failure, meaning it saves time and money that would be spent on official certification in ATL laboratory.
+You can find the instruction how to execute in-house certification tests using a Matter Test Harness on the `CSA Matter Resource Kit`_ page.
+Open the **Test Tool User Guide** link in the **Testing** section under the **Testing and Certification** section of the page.

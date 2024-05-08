@@ -17,6 +17,7 @@ It can be used for the following purposes:
 * `Performing DFU`_
 * `Rebooting the device`_
 * `Getting information about the firmware version`_
+* `Getting identification information about the device`_
 * `Playing LED stream`_
 
 Overview
@@ -41,6 +42,9 @@ Complete the following instructions, depending on your operating system:
 * `Windows`_
 * `Debian/Ubuntu/Linux Mint`_
 
+You also need to ensure that the `Linux Vendor Firmware Service (LVFS) <LVFS_>`_ ``fwupd`` daemon is not running in the background.
+See the `Stopping fwupd daemon`_ section for details.
+
 Windows
 =======
 
@@ -48,6 +52,13 @@ Complete the following steps:
 
 1. Download the HIDAPI library from `HIDAPI releases`_.
    Use the bundled DLL or build it according to instructions in `HIDAPI library`_.
+
+#. Select the appropriate HIDADPI library version for the used Windows system (either ``x86`` or ``x64``).
+   Copy the :file:`hidapi.dll` file and paste it into either of the following directory:
+
+   * The directory where used Python executable is located.
+   * The :file:`Windows\\System32` directory, for example :file:`C:\\Windows\\System32`.
+
 #. Install `pyhidapi Python wrapper`_ and other required libraries with the following command:
 
    .. parsed-literal::
@@ -113,6 +124,34 @@ Complete the following steps:
       pip3 install --user -r requirements_music_led_stream.txt
 
   For more detailed information about LED stream functionality, see the `Playing LED stream`_ section.
+
+Stopping fwupd daemon
+=====================
+
+The :ref:`nrf_desktop_config_channel` is also used in the `Linux Vendor Firmware Service (LVFS) <LVFS_>`_ by the Nordic HID plugin of ``fwupd``.
+Several Linux-based operating systems run the ``fwupd`` daemon in the background to manage firmware updates.
+
+Configuring a connected HID device simultaneously with multiple host tools is not supported.
+If multiple host tools configure a HID device at the same time, the configuration channel transport implementation in the firmware might mix requests and responses coming from various host tools.
+Make sure to stop the ``fwupd`` daemon before using the HID configurator script.
+
+Ubuntu example
+--------------
+
+To either stop or start the ``fwupd`` daemon on Ubuntu, run one of the following commands:
+
+.. parsed-literal::
+    :class: highlight
+
+    sudo systemctl stop fwupd
+    sudo systemctl start fwupd
+
+To check the status of the ``fwupd`` daemon on Ubuntu, run the following command:
+
+.. parsed-literal::
+    :class: highlight
+
+    systemctl status fwupd
 
 Using the script
 ****************
@@ -268,6 +307,23 @@ To obtain information about the firmware running on the device, run the followin
 .. note::
   Only devices with :ref:`nrf_desktop_dfu` support the ``fwinfo`` command.
 
+Getting identification information about the device
+===================================================
+
+To obtain information about the device's Vendor ID, Product ID, and generation, run the following command:
+
+.. parsed-literal::
+    :class: highlight
+
+    python3 configurator_cli.py DEVICE devinfo
+
+.. note::
+  Only devices with the :ref:`nrf_desktop_dfu` support the ``devinfo`` command.
+
+The command can be used to obtain Vendor ID and Product ID of devices connected through an nRF Desktop dongle.
+The generation is a string that allows to distinguish configurations that use the same board and bootloader, but are not interoperable.
+For more information about implementation in firmware, see nRF Desktop's :ref:`nrf_desktop_dfu`.
+
 Playing LED stream
 ==================
 
@@ -312,6 +368,10 @@ If the currently discovered device has connected peripherals, they are discovere
 The device discovery procedure is described on the :ref:`configuration channel documentation page <nrf_desktop_config_channel_device_discovery>`.
 An example of implementation is available in the :file:`scripts/hid_configurator/NrfHidDevice.py` file.
 The device discovery is implemented in the ``__init__`` function of the ``NrfHidDevice`` class.
+
+.. note::
+  The HID configurator script does not cache device discovery data.
+  All of the connected nRF Desktop devices are rediscovered on each script invocation, right before the specified command is called.
 
 Dependencies
 ************

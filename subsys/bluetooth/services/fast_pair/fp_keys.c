@@ -327,7 +327,7 @@ int fp_keys_store_account_key(const struct bt_conn *conn, const struct fp_accoun
 	}
 	WRITE_BIT(proc->wait_for_mask, WAIT_FOR_ACCOUNT_KEY_BIT_POS, 0);
 
-	if (!IS_ENABLED(CONFIG_BT_FAST_PAIR_EXT_PN)) {
+	if (!IS_ENABLED(CONFIG_BT_FAST_PAIR_PN)) {
 		/* Invalidate Key to ensure that requests will be rejected until procedure is
 		 * restarted.
 		 */
@@ -442,9 +442,8 @@ static void timeout_fn(struct k_work *w)
 	key_timeout(proc);
 }
 
-static int fp_keys_init(const struct device *unused)
+static int fp_keys_init(void)
 {
-	ARG_UNUSED(unused);
 
 	for (size_t i = 0; i < ARRAY_SIZE(fp_procedures); i++) {
 		struct fp_procedure *proc = &fp_procedures[i];

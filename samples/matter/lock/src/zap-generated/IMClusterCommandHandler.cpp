@@ -20,7 +20,6 @@
 #include <cinttypes>
 #include <cstdint>
 
-#include <app-common/zap-generated/af-structs.h>
 #include <app-common/zap-generated/callback.h>
 #include <app-common/zap-generated/cluster-objects.h>
 #include <app-common/zap-generated/ids/Clusters.h>
@@ -31,22 +30,16 @@
 #include <lib/core/CHIPSafeCasts.h>
 #include <lib/support/TypeTraits.h>
 
-// Currently we need some work to keep compatible with ember lib.
-#include <app/util/ember-compatibility-functions.h>
-
 namespace chip
 {
 namespace app
 {
-
 	// Cluster specific command parsing
 
 	namespace Clusters
 	{
-
 		namespace AdministratorCommissioning
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -111,7 +104,6 @@ namespace app
 
 		namespace DoorLock
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -227,7 +219,6 @@ namespace app
 
 		namespace GeneralCommissioning
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -292,7 +283,6 @@ namespace app
 
 		namespace GeneralDiagnostics
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -337,7 +327,6 @@ namespace app
 
 		namespace GroupKeyManagement
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -411,7 +400,6 @@ namespace app
 
 		namespace Identify
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -453,104 +441,8 @@ namespace app
 
 		} // namespace Identify
 
-		namespace NetworkCommissioning
-		{
-
-			void DispatchServerCommand(CommandHandler *apCommandObj,
-						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
-			{
-				CHIP_ERROR TLVError = CHIP_NO_ERROR;
-				bool wasHandled = false;
-				{
-					switch (aCommandPath.mCommandId) {
-					case Commands::ScanNetworks::Id: {
-						Commands::ScanNetworks::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterScanNetworksCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::AddOrUpdateWiFiNetwork::Id: {
-						Commands::AddOrUpdateWiFiNetwork::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterAddOrUpdateWiFiNetworkCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::AddOrUpdateThreadNetwork::Id: {
-						Commands::AddOrUpdateThreadNetwork::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterAddOrUpdateThreadNetworkCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::RemoveNetwork::Id: {
-						Commands::RemoveNetwork::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterRemoveNetworkCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::ConnectNetwork::Id: {
-						Commands::ConnectNetwork::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterConnectNetworkCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::ReorderNetwork::Id: {
-						Commands::ReorderNetwork::DecodableType commandData;
-						TLVError = DataModel::Decode(aDataTlv, commandData);
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled =
-								emberAfNetworkCommissioningClusterReorderNetworkCallback(
-									apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					default: {
-						// Unrecognized command ID, error status will apply.
-						apCommandObj->AddStatus(
-							aCommandPath,
-							Protocols::InteractionModel::Status::UnsupportedCommand);
-						ChipLogError(Zcl,
-							     "Unknown command " ChipLogFormatMEI
-							     " for cluster " ChipLogFormatMEI,
-							     ChipLogValueMEI(aCommandPath.mCommandId),
-							     ChipLogValueMEI(aCommandPath.mClusterId));
-						return;
-					}
-					}
-				}
-
-				if (CHIP_NO_ERROR != TLVError || !wasHandled) {
-					apCommandObj->AddStatus(aCommandPath,
-								Protocols::InteractionModel::Status::InvalidCommand);
-					ChipLogProgress(Zcl, "Failed to dispatch command, TLVError=%" CHIP_ERROR_FORMAT,
-							TLVError.Format());
-				}
-			}
-
-		} // namespace NetworkCommissioning
-
 		namespace OtaSoftwareUpdateRequestor
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -558,12 +450,12 @@ namespace app
 				bool wasHandled = false;
 				{
 					switch (aCommandPath.mCommandId) {
-					case Commands::AnnounceOtaProvider::Id: {
-						Commands::AnnounceOtaProvider::DecodableType commandData;
+					case Commands::AnnounceOTAProvider::Id: {
+						Commands::AnnounceOTAProvider::DecodableType commandData;
 						TLVError = DataModel::Decode(aDataTlv, commandData);
 						if (TLVError == CHIP_NO_ERROR) {
 							wasHandled =
-								emberAfOtaSoftwareUpdateRequestorClusterAnnounceOtaProviderCallback(
+								emberAfOtaSoftwareUpdateRequestorClusterAnnounceOTAProviderCallback(
 									apCommandObj, aCommandPath, commandData);
 						}
 						break;
@@ -595,7 +487,6 @@ namespace app
 
 		namespace OperationalCredentials
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -709,7 +600,6 @@ namespace app
 
 		namespace ThreadNetworkDiagnostics
 		{
-
 			void DispatchServerCommand(CommandHandler *apCommandObj,
 						   const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aDataTlv)
 			{
@@ -757,8 +647,6 @@ namespace app
 	void DispatchSingleClusterCommand(const ConcreteCommandPath &aCommandPath, TLV::TLVReader &aReader,
 					  CommandHandler *apCommandObj)
 	{
-		Compatibility::SetupEmberAfCommandHandler(apCommandObj, aCommandPath);
-
 		switch (aCommandPath.mClusterId) {
 		case Clusters::AdministratorCommissioning::Id:
 			Clusters::AdministratorCommissioning::DispatchServerCommand(apCommandObj, aCommandPath,
@@ -779,9 +667,6 @@ namespace app
 		case Clusters::Identify::Id:
 			Clusters::Identify::DispatchServerCommand(apCommandObj, aCommandPath, aReader);
 			break;
-		case Clusters::NetworkCommissioning::Id:
-			Clusters::NetworkCommissioning::DispatchServerCommand(apCommandObj, aCommandPath, aReader);
-			break;
 		case Clusters::OtaSoftwareUpdateRequestor::Id:
 			Clusters::OtaSoftwareUpdateRequestor::DispatchServerCommand(apCommandObj, aCommandPath,
 										    aReader);
@@ -798,8 +683,6 @@ namespace app
 			apCommandObj->AddStatus(aCommandPath, Protocols::InteractionModel::Status::UnsupportedCluster);
 			break;
 		}
-
-		Compatibility::ResetEmberAfObjects();
 	}
 
 } // namespace app

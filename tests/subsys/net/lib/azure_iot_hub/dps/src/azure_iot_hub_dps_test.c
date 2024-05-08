@@ -5,8 +5,9 @@
  */
 #include <unity.h>
 #include <stdbool.h>
-#include <zephyr/kernel.h>
 #include <string.h>
+#include <zephyr/kernel.h>
+#include <zephyr/settings/settings.h>
 #include <zephyr/init.h>
 
 #include <azure/az_core.h>
@@ -15,7 +16,6 @@
 #include "azure_iot_hub_dps_private.h"
 
 #include "cmock_mqtt_helper.h"
-#include "cmock_settings.h"
 
 #define TEST_DPS_HOSTNAME			CONFIG_AZURE_IOT_HUB_DPS_HOSTNAME
 
@@ -46,6 +46,10 @@
 						"/api-version=2019-03-31"
 #define TEST_EXPECTED_USER_NAME_DEFAULT_LEN	(sizeof(TEST_EXPECTED_USER_NAME_DEFAULT) - 1)
 
+/* It is required to be added to each test. That is because unity's
+ * main may return nonzero, while zephyr's main currently must
+ * return 0 in all cases (other values are reserved).
+ */
 extern int unity_main(void);
 
 /* Pull in variables and functions from the DPS library. */
@@ -69,10 +73,6 @@ static K_SEM_DEFINE(reg_assigning_sem, 0, 1);
 /* Test suite configuration functions */
 void setUp(void)
 {
-	__cmock_settings_subsys_init_IgnoreAndReturn(0);
-	__cmock_settings_load_subtree_IgnoreAndReturn(0);
-	__cmock_settings_save_one_IgnoreAndReturn(0);
-	__cmock_settings_delete_IgnoreAndReturn(0);
 	az_precondition_failed_set_callback(az_precondition_failed_cb);
 
 	dps_state = DPS_STATE_UNINIT;
@@ -139,6 +139,23 @@ static void dps_handler(enum azure_iot_hub_dps_reg_status state)
 }
 
 /* Tests */
+
+void test_azure_iot_hub_dps_reset_before_init(void)
+{
+	TEST_ASSERT_EQUAL(-ENOENT, azure_iot_hub_dps_reset());
+}
+
+void test_azure_iot_hub_dps_reset_after_init(void)
+{
+	struct azure_iot_hub_dps_config config = {
+		.handler = dps_handler,
+		.reg_id.ptr = TEST_REGISTRATION_ID,
+		.reg_id.size = TEST_REGISTRATION_ID_LEN,
+	};
+
+	TEST_ASSERT_EQUAL(0, azure_iot_hub_dps_init(&config));
+	TEST_ASSERT_EQUAL(0, azure_iot_hub_dps_reset());
+}
 
 void test_azure_iot_hub_dps_init_invalid_config(void)
 {
@@ -231,7 +248,7 @@ void test_azure_iot_hub_dps_device_id_delete(void)
 	TEST_ASSERT_EQUAL_MEMORY(az_span_ptr(dps_reg_ctx.assigned_device_id),
 				 TEST_EXPECTED_DEVICE_ID, TEST_EXPECTED_DEVICE_ID_LEN);
 	TEST_ASSERT_EQUAL(0, azure_iot_hub_dps_device_id_delete());
-	TEST_ASSERT_EQUAL(NULL, az_span_ptr(dps_reg_ctx.assigned_device_id));
+	TEST_ASSERT_EQUAL_PTR(NULL, az_span_ptr(dps_reg_ctx.assigned_device_id));
 	TEST_ASSERT_EQUAL(0, az_span_size(dps_reg_ctx.assigned_device_id));
 	TEST_ASSERT_EQUAL(AZURE_IOT_HUB_DPS_REG_STATUS_NOT_STARTED, dps_reg_ctx.status);
 	TEST_ASSERT_EQUAL(DPS_STATE_UNINIT, dps_state);
@@ -250,8 +267,8 @@ void test_azure_iot_hub_dps_reset_connected(void)
 	TEST_ASSERT_EQUAL_MEMORY(az_span_ptr(dps_reg_ctx.assigned_device_id),
 				 TEST_EXPECTED_DEVICE_ID, TEST_EXPECTED_DEVICE_ID_LEN);
 	TEST_ASSERT_EQUAL(0, azure_iot_hub_dps_reset());
-	TEST_ASSERT_EQUAL(NULL, az_span_ptr(dps_reg_ctx.assigned_hub));
-	TEST_ASSERT_EQUAL(NULL, az_span_ptr(dps_reg_ctx.assigned_device_id));
+	TEST_ASSERT_EQUAL_PTR(NULL, az_span_ptr(dps_reg_ctx.assigned_hub));
+	TEST_ASSERT_EQUAL_PTR(NULL, az_span_ptr(dps_reg_ctx.assigned_device_id));
 	TEST_ASSERT_EQUAL(0, az_span_size(dps_reg_ctx.assigned_hub));
 	TEST_ASSERT_EQUAL(0, az_span_size(dps_reg_ctx.assigned_device_id));
 	TEST_ASSERT_EQUAL(AZURE_IOT_HUB_DPS_REG_STATUS_NOT_STARTED, dps_reg_ctx.status);
@@ -468,7 +485,9 @@ void test_on_publish_invalid_payload(void)
 	TEST_ASSERT_EQUAL(0, k_sem_take(&reg_failed_sem, K_SECONDS(2)));
 }
 
-void main(void)
+int main(void)
 {
 	(void)unity_main();
+
+	return 0;
 }

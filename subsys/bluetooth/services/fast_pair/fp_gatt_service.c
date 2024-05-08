@@ -12,6 +12,8 @@
 #include <zephyr/bluetooth/l2cap.h>
 #include <zephyr/bluetooth/gatt.h>
 
+#include <bluetooth/services/fast_pair.h>
+
 /* Those headers are included to make a workaround of Android issue with sending old RPA address
  * during Key-based Pairing write.
  */
@@ -101,6 +103,8 @@ struct msg_seekers_passkey {
 	uint32_t passkey;
 };
 
+/* Reference to the Fast Pair information callback structure. */
+static const struct bt_fast_pair_info_cb *fast_pair_info_cb;
 
 static ssize_t read_model_id(struct bt_conn *conn,
 			     const struct bt_gatt_attr *attr,
@@ -377,7 +381,7 @@ static int handle_key_based_pairing_req(struct bt_conn *conn,
 	}
 
 	if (parsed_req->fp_flags & FP_KBP_FLAG_NOTIFY_NAME) {
-		if (IS_ENABLED(CONFIG_BT_FAST_PAIR_EXT_PN)) {
+		if (IS_ENABLED(CONFIG_BT_FAST_PAIR_PN)) {
 			WRITE_BIT(*additional_actions, ADDITIONAL_ACTION_NOTIFY_PN_BIT_POS, 1);
 		} else {
 			/* The notification will not be sent, do not return error. */
@@ -418,7 +422,7 @@ static int handle_action_req(struct bt_conn *conn,
 
 	int err;
 
-	if (!IS_ENABLED(CONFIG_BT_FAST_PAIR_EXT_PN)) {
+	if (!IS_ENABLED(CONFIG_BT_FAST_PAIR_PN)) {
 		ARG_UNUSED(write_additional_data);
 		LOG_WRN("Action request not supported (Action request)");
 		return -ENOTSUP;
@@ -703,6 +707,8 @@ static ssize_t write_account_key(struct bt_conn *conn,
 finish:
 	if (res < 0) {
 		fp_keys_drop_key(conn);
+	} else if (fast_pair_info_cb && fast_pair_info_cb->account_key_written) {
+		fast_pair_info_cb->account_key_written(conn);
 	}
 
 	LOG_DBG("Account Key write: res=%d conn=%p", res, (void *)conn);
@@ -756,4 +762,19 @@ finish:
 	LOG_DBG("Additional Data write: res=%d conn=%p", res, (void *)conn);
 
 	return res;
+}
+
+int bt_fast_pair_info_cb_register(const struct bt_fast_pair_info_cb *cb)
+{
+	if (!cb) {
+		return -EINVAL;
+	}
+
+	if (fast_pair_info_cb) {
+		return -EALREADY;
+	}
+
+	fast_pair_info_cb = cb;
+
+	return 0;
 }

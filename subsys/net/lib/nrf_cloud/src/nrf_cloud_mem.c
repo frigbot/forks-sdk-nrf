@@ -8,7 +8,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#include "nrf_cloud_codec.h"
+#include "nrf_cloud_codec_internal.h"
 
 LOG_MODULE_REGISTER(nrf_cloud_mem, CONFIG_NRF_CLOUD_LOG_LEVEL);
 
@@ -28,7 +28,9 @@ void *nrf_cloud_malloc(size_t size)
 
 void nrf_cloud_free(void *ptr)
 {
-	used_hooks.free_fn(ptr);
+	if (ptr) {
+		used_hooks.free_fn(ptr);
+	}
 }
 
 void nrf_cloud_os_mem_hooks_init(struct nrf_cloud_os_mem_hooks *hooks)

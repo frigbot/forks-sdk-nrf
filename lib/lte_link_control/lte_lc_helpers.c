@@ -120,7 +120,7 @@ void event_handler_list_dispatch(const struct lte_lc_evt *const evt)
 	k_mutex_lock(&list_mtx, K_FOREVER);
 
 	/* Dispatch events to all registered handlers */
-	LOG_DBG("Dispatching events:");
+	LOG_DBG("Dispatching event: type=%d", evt->type);
 	SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&handler_list, curr, tmp, node) {
 		LOG_DBG(" - handler=0x%08X", (uint32_t)curr->handler);
 		curr->handler(evt);
@@ -155,24 +155,17 @@ static int string_param_to_int(struct at_param_list *resp_list,
 	return 0;
 }
 
-/* Confirm valid system mode and set Paging Time Window multiplier.
+/* Get Paging Time Window multiplier for the LTE mode.
  * Multiplier is 1.28 s for LTE-M, and 2.56 s for NB-IoT, derived from
  * Figure 10.5.5.32/3GPP TS 24.008.
  */
-static int get_ptw_multiplier(enum lte_lc_lte_mode lte_mode, float *ptw_multiplier)
+static void get_ptw_multiplier(enum lte_lc_lte_mode lte_mode, float *ptw_multiplier)
 {
-	switch (lte_mode) {
-	case LTE_LC_LTE_MODE_LTEM:
-		*ptw_multiplier = 1.28;
-		break;
-	case LTE_LC_LTE_MODE_NBIOT:
+	if (lte_mode == LTE_LC_LTE_MODE_NBIOT) {
 		*ptw_multiplier = 2.56;
-		break;
-	default:
-		return -ENOTCONN;
+	} else {
+		*ptw_multiplier = 1.28;
 	}
-
-	return 0;
 }
 
 static int get_edrx_value(enum lte_lc_lte_mode lte_mode, uint8_t idx, float *edrx_value)
@@ -273,7 +266,6 @@ static int get_nw_reg_status(struct at_param_list *list, bool is_notif)
 	case LTE_LC_NW_REG_REGISTRATION_DENIED:
 	case LTE_LC_NW_REG_UNKNOWN:
 	case LTE_LC_NW_REG_REGISTERED_ROAMING:
-	case LTE_LC_NW_REG_REGISTERED_EMERGENCY:
 	case LTE_LC_NW_REG_UICC_FAIL:
 		break;
 	default:
@@ -302,6 +294,7 @@ int string_to_int(const char *str_buf, int base, int *output)
 	return 0;
 }
 
+/* Parses eDRX parameters from a +CEDRXS notification or a +CEDRXRDP response. */
 int parse_edrx(const char *at_response, struct lte_lc_edrx_cfg *cfg)
 {
 	int err, tmp_int;
@@ -321,12 +314,40 @@ int parse_edrx(const char *at_response, struct lte_lc_edrx_cfg *cfg)
 		return err;
 	}
 
-	/* Parse CEDRXP response and populate AT parameter list */
+	/* Parse response and populate AT parameter list */
 	err = at_parser_params_from_str(at_response,
 					NULL,
 					&resp_list);
 	if (err) {
-		LOG_ERR("Could not parse +CEDRXP response, error: %d", err);
+		LOG_ERR("Could not parse eDRX response, error: %d", err);
+		goto clean_exit;
+	}
+
+	err = at_params_int_get(&resp_list, AT_CEDRXP_ACTT_INDEX, &tmp_int);
+	if (err) {
+		LOG_ERR("Failed to get LTE mode, error: %d", err);
+		goto clean_exit;
+	}
+
+	/* The access technology indicators 4 for LTE-M and 5 for NB-IoT are
+	 * specified in 3GPP 27.007 Ch. 7.41.
+	 * 0 indicates that the access technology does not currently use eDRX.
+	 * Any other value is not expected, and we use 0xFFFFFFFF to represent those.
+	 */
+	cfg->mode = tmp_int == 0 ? LTE_LC_LTE_MODE_NONE :
+		    tmp_int == 4 ? LTE_LC_LTE_MODE_LTEM :
+		    tmp_int == 5 ? LTE_LC_LTE_MODE_NBIOT :
+				   0xFFFFFFFF; /* Intentionally illegal value */
+
+	/* Check for the case where eDRX is not used. */
+	if (cfg->mode == LTE_LC_LTE_MODE_NONE) {
+		cfg->edrx = 0;
+		cfg->ptw = 0;
+
+		err = 0;
+		goto clean_exit;
+	} else if (cfg->mode == 0xFFFFFFFF) {
+		err = -ENODATA;
 		goto clean_exit;
 	}
 
@@ -334,6 +355,20 @@ int parse_edrx(const char *at_response, struct lte_lc_edrx_cfg *cfg)
 				   tmp_buf, &len);
 	if (err) {
 		LOG_ERR("Failed to get eDRX configuration, error: %d", err);
+		goto clean_exit;
+	}
+
+	/* Workaround for +CEDRXRDP response handling. The AcT-type is handled differently in the
+	 * +CEDRXRDP response, so use of eDRX needs to be determined based on the eDRX value
+	 * parameter.
+	 */
+	if (len == 0) {
+		/* Network provided eDRX value is empty, eDRX is not used. */
+		cfg->mode = LTE_LC_LTE_MODE_NONE;
+		cfg->edrx = 0;
+		cfg->ptw = 0;
+
+		err = 0;
 		goto clean_exit;
 	}
 
@@ -347,28 +382,11 @@ int parse_edrx(const char *at_response, struct lte_lc_edrx_cfg *cfg)
 	 */
 	idx = strtoul(tmp_buf, NULL, 2);
 
-	err = at_params_int_get(&resp_list, AT_CEDRXP_ACTT_INDEX, &tmp_int);
-	if (err) {
-		LOG_ERR("Failed to get LTE mode, error: %d", err);
-		goto clean_exit;
-	}
-
-	/* The acces technology indicators 4 for LTE-M and 5 for NB-IoT are
-	 * specified in 3GPP 27.007 Ch. 7.41.
-	 */
-	cfg->mode = tmp_int == 4 ? LTE_LC_LTE_MODE_LTEM :
-		    tmp_int == 5 ? LTE_LC_LTE_MODE_NBIOT :
-				   LTE_LC_LTE_MODE_NONE;
-
-	/* Confirm valid system mode and set Paging Time Window multiplier.
+	/* Get Paging Time Window multiplier for the LTE mode.
 	 * Multiplier is 1.28 s for LTE-M, and 2.56 s for NB-IoT, derived from
-	 * figure 10.5.5.32/3GPP TS 24.008.
+	 * Figure 10.5.5.32/3GPP TS 24.008.
 	 */
-	err = get_ptw_multiplier(cfg->mode, &ptw_multiplier);
-	if (err) {
-		LOG_WRN("Active LTE mode could not be determined");
-		goto clean_exit;
-	}
+	get_ptw_multiplier(cfg->mode, &ptw_multiplier);
 
 	err = get_edrx_value(cfg->mode, idx, &cfg->edrx);
 	if (err) {
@@ -1380,6 +1398,11 @@ int parse_mdmev(const char *at_response, enum lte_lc_modem_evt *modem_evt)
 		[LTE_LC_MODEM_EVT_RESET_LOOP] = AT_MDMEV_RESET_LOOP,
 		[LTE_LC_MODEM_EVT_BATTERY_LOW] = AT_MDMEV_BATTERY_LOW,
 		[LTE_LC_MODEM_EVT_OVERHEATED] = AT_MDMEV_OVERHEATED,
+		[LTE_LC_MODEM_EVT_NO_IMEI] = AT_MDMEV_NO_IMEI,
+		[LTE_LC_MODEM_EVT_CE_LEVEL_0] = AT_MDMEV_CE_LEVEL_0,
+		[LTE_LC_MODEM_EVT_CE_LEVEL_1] = AT_MDMEV_CE_LEVEL_1,
+		[LTE_LC_MODEM_EVT_CE_LEVEL_2] = AT_MDMEV_CE_LEVEL_2,
+		[LTE_LC_MODEM_EVT_CE_LEVEL_3] = AT_MDMEV_CE_LEVEL_3,
 	};
 
 	if (at_response == NULL || modem_evt == NULL) {

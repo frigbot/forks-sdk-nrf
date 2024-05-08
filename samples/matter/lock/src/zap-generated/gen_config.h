@@ -20,14 +20,6 @@
 // Prevent multiple inclusion
 #pragma once
 
-// User options for plugin Binding Table Library
-#define EMBER_BINDING_TABLE_SIZE 10
-
-/**** Network Section ****/
-#define EMBER_SUPPORTED_NETWORKS (1)
-
-#define EMBER_APS_UNICAST_MESSAGE_COUNT 10
-
 /**** Cluster endpoint counts ****/
 #define EMBER_AF_IDENTIFY_CLUSTER_SERVER_ENDPOINT_COUNT (1)
 #define EMBER_AF_DESCRIPTOR_CLUSTER_SERVER_ENDPOINT_COUNT (2)
@@ -107,7 +99,7 @@
 #define EMBER_AF_PLUGIN_WI_FI_NETWORK_DIAGNOSTICS_SERVER
 #define EMBER_AF_PLUGIN_WI_FI_NETWORK_DIAGNOSTICS
 
-// Use this macro to check if the server side of the AdministratorCommissioning cluster is included
+// Use this macro to check if the server side of the Administrator Commissioning cluster is included
 #define ZCL_USING_ADMINISTRATOR_COMMISSIONING_CLUSTER_SERVER
 #define EMBER_AF_PLUGIN_ADMINISTRATOR_COMMISSIONING_SERVER
 #define EMBER_AF_PLUGIN_ADMINISTRATOR_COMMISSIONING

@@ -19,7 +19,7 @@
 #define RPU_MEM_LMAC_VER 0xB7000D54
 
 #define RPU_MEM_LMAC_PATCH_BIN 0x80044000
-#define RPU_MEM_LMAC_PATCH_BIMG 0x80049000
+#define RPU_MEM_LMAC_PATCH_BIMG 0x8004B000
 
 #define NRF_WIFI_LMAC_VER(ver) ((ver & 0xFF000000) >> 24)
 #define NRF_WIFI_LMAC_VER_MAJ(ver) ((ver & 0x00FF0000) >> 16)
@@ -38,7 +38,7 @@
 #define HW_SLEEP_ENABLE 2
 #define SW_SLEEP_ENABLE 1
 #define SLEEP_DISABLE 0
-#define HW_DELAY 7300
+#define HW_DELAY 7350
 #define SW_DELAY 5000
 #define BCN_TIMEOUT 40000
 #define CALIB_SLEEP_CLOCK_ENABLE 1
@@ -135,52 +135,61 @@ struct INT_HPQ {
 } __NRF_WIFI_PKD;
 
 /**
- * struct lmac_fw_config_params:lmac firmware config params
- * @boot_status:		lmac firmware boot status. LMAC will set to
- *				0x5a5a5a5a after completing boot process.
- * @rpu_config_name:		rpu config name. this is a string and
- *				expected sting is explorer or whisper
- * @rpu_config_number:		rpu config number
- * @HP_lmac_to_host_isr_en:	lmac register address to enable ISR to Host
- * @HP_lmac_to_host_isr_clear:	Address to Clear host ISR
- * @HP_set_lmac_isr:		Address to set ISR to lmac Clear host ISR
- * @FreeCmdPtrQ:		queue which contains Free GRAM pointers for
- *				commands.
- * @cmdPtrQ:			Command pointer queue. Host should pick gram
- *				pointer from FreeCmdPtrQ. Populate command in
- *				GRAM and submit back to this queue for RPU.
- * @eventPtrQ:			Event pointer queue. Host should pick gram
- *				event pointer in isr
- * @version:			lmac firmware version
- *
+ * @brief LMAC firmware config params
  *
  */
 struct lmac_fw_config_params {
+	/** lmac firmware boot status. LMAC will set to 0x5a5a5a5a after completing boot process */
 	unsigned int boot_status;
+	/** LMAC version */
 	unsigned int version;
+	/** Address to resubmit Rx buffers */
 	unsigned int lmac_rx_buffer_addr;
+	/** Maximum Rx descriptors */
 	unsigned int lmac_rx_max_desc_cnt;
+	/** size of each descriptor size */
 	unsigned int lmac_rx_desc_size;
+	/** rpu config name. this is a string */
 	unsigned char rpu_config_name[16];
+	/** rpu config number */
 	unsigned char rpu_config_number[8];
+	/** numRX */
 	unsigned int numRX;
+	/** numTX */
 	unsigned int numTX;
 #define FREQ_2_4_GHZ 1
 #define FREQ_5_GHZ 2
+	/** supported bands */
 	unsigned int bands;
+	/** system frequency */
 	unsigned int sys_frequency_in_mhz;
+	/** queue which contains Free GRAM pointers for commands */
 	struct hpqm_queue FreeCmdPtrQ;
+	/** Command pointer queue. Host should pick pointer from FreeCmdPtrQ, populate
+	 *  command into that address and submit back to this queue for RPU
+	 */
 	struct hpqm_queue cmdPtrQ;
+	/** queue which contains Free GRAM pointers for events */
 	struct hpqm_queue eventPtrQ;
+	/** Event pointer queue. Host should pick pointer from FreeCmdPtrQ, populate
+	 *  command into that address and submit back to this queue for RPU
+	 */
 	struct hpqm_queue freeEventPtrQ;
+	/** Rx buffer queue */
 	struct hpqm_queue SKBGramPtrQ_1;
+	/** Rx buffer queue */
 	struct hpqm_queue SKBGramPtrQ_2;
+	/** Rx buffer queue */
 	struct hpqm_queue SKBGramPtrQ_3;
+	/** lmac register address to enable ISR to Host */
 	unsigned int HP_lmac_to_host_isr_en;
+	/** Address to Clear host ISR */
 	unsigned int HP_lmac_to_host_isr_clear;
+	/** Address to set ISR to lmac Clear host ISR */
 	unsigned int HP_set_lmac_isr;
 
 #define NUM_32_QUEUES 4
+	/** Hardware queues */
 	struct INT_HPQ hpq32[NUM_32_QUEUES];
 
 } __NRF_WIFI_PKD;
@@ -188,9 +197,12 @@ struct lmac_fw_config_params {
 #define MAX_NUM_OF_RX_QUEUES 3
 
 struct rx_buf_pool_params {
+	/** buffer size */
 	unsigned short buf_sz;
+	/** number of buffers */
 	unsigned short num_bufs;
 } __NRF_WIFI_PKD;
+
 struct temp_vbat_config {
 	unsigned int temp_based_calib_en;
 	unsigned int temp_calib_bitmap;

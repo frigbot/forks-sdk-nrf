@@ -1,9 +1,8 @@
-#-------------------------------------------------------------------------------
-# Copyright (c) 2021, Nordic Semiconductor ASA.
+#
+# Copyright (c) 2021 - 2023, Nordic Semiconductor ASA.
 #
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
-#-------------------------------------------------------------------------------
 
 # NOTE: All code in this folder and subfolders is run as part of the TF-M
 #       build, not in a Zephyr context.
@@ -18,7 +17,6 @@ set(partition_includes
 set(board_includes
   board
   ${CMAKE_BINARY_DIR}/../zephyr/misc/generated/syscalls_links/include
-  ${ZEPHYR_BASE}/include/zephyr
   ${ZEPHYR_BASE}/include
   )
 
@@ -33,16 +31,17 @@ target_compile_definitions(platform_s
 
 target_include_directories(platform_s
   PUBLIC
+  include
   ${partition_includes}
   ${board_includes}
   services/include
-  ${NRF_DIR}/include
+  ${ZEPHYR_NRF_MODULE_DIR}/include
   )
 
 target_sources(platform_s
   PRIVATE
   common/tfm_hal_platform.c
-  common/attest_hal.c
+  $<$<BOOL:${TFM_PARTITION_INITIAL_ATTESTATION}>:${CMAKE_CURRENT_SOURCE_DIR}/common/attest_hal.c>
   common/assert.c
   $<$<NOT:$<BOOL:${PLATFORM_DEFAULT_OTP}>>:${CMAKE_CURRENT_SOURCE_DIR}/common/dummy_otp.c>
   )
@@ -66,25 +65,47 @@ if (NOT ${PLATFORM_DEFAULT_PROVISIONING})
     )
 endif()
 
+target_sources(tfm_sprt
+    PRIVATE
+        $<$<NOT:$<BOOL:${TFM_SP_LOG_RAW_ENABLED}>>:${CMAKE_CURRENT_SOURCE_DIR}/common/dummy_tfm_sp_log_raw.c>
+)
+
 # Disabling UART stdout not supported in NS Image, which is always built even when not needed.
 target_sources(platform_ns
   PRIVATE
   $<$<NOT:$<BOOL:${PLATFORM_DEFAULT_UART_STDOUT}>>:${CMAKE_CURRENT_SOURCE_DIR}/common/dummy_uart_stdout.c>
   )
 
-if (${TFM_PARTITION_CRYPTO}
-      AND (NOT ${CRYPTO_KEY_DERIVATION_MODULE_DISABLED})
-      AND (NOT ${PLATFORM_DEFAULT_CRYPTO_KEYS}))
-  target_sources(platform_s
+if (${TFM_PARTITION_CRYPTO})
+  target_sources(platform_crypto_keys
     PRIVATE
-      ${NRF_DIR}/lib/hw_unique_key/hw_unique_key.c
-      ${NRF_DIR}/lib/hw_unique_key/hw_unique_key_kmu.c
       ${CMAKE_CURRENT_LIST_DIR}/common/crypto_keys.c
   )
-endif()
 
-if (${TFM_PARTITION_CRYPTO})
-  target_link_libraries(platform_s PRIVATE platform_cc3xx)
+  if (${CONFIG_HW_UNIQUE_KEY})
+    target_compile_definitions(platform_s PUBLIC
+      CONFIG_HW_UNIQUE_KEY
+      $<$<BOOL:${CONFIG_HW_UNIQUE_KEY_RANDOM}>:CONFIG_HW_UNIQUE_KEY_RANDOM>)
+
+    target_sources(platform_s
+      PRIVATE
+        ${ZEPHYR_NRF_MODULE_DIR}/lib/hw_unique_key/hw_unique_key.c
+        ${ZEPHYR_NRF_MODULE_DIR}/lib/hw_unique_key/hw_unique_key_kmu.c
+    )
+  endif()
+
+  if (${TFM_PARTITION_INITIAL_ATTESTATION})
+    target_sources(platform_s
+      PRIVATE
+        ${ZEPHYR_NRF_MODULE_DIR}/lib/identity_key/identity_key.c
+    )
+  endif()
+
+  target_link_libraries(platform_crypto_keys PUBLIC platform_s)
+
+  if(EXISTS platform_cc3xx)
+	target_link_libraries(platform_s PRIVATE platform_cc3xx)
+  endif()
 
   # Needed in order to get crypto partition modules flags
   target_link_libraries(platform_s PRIVATE tfm_psa_rot_partition_crypto)
@@ -98,7 +119,10 @@ if (CONFIG_NFCT_PINS_AS_GPIOS)
   target_compile_definitions(platform_s PUBLIC CONFIG_NFCT_PINS_AS_GPIOS)
 endif()
 
-target_compile_definitions(platform_s PUBLIC CONFIG_HW_UNIQUE_KEY CONFIG_HW_UNIQUE_KEY_RANDOM)
+
+if (CONFIG_NRF_TRACE_PORT)
+  target_compile_definitions(platform_s PUBLIC ENABLE_TRACE)
+endif()
 
 if (CRYPTO_STORAGE_DISABLED AND TFM_PARTITION_CRYPTO AND NOT TFM_PARTITION_INTERNAL_TRUSTED_STORAGE)
   # Added here to satisfy the following requirement from tfm_crypto.yaml:
@@ -122,8 +146,8 @@ if(TFM_PARTITION_PLATFORM)
   target_include_directories(platform_s
     PUBLIC
     include
-    ${NRF_DIR}/include/tfm
-    ${NRF_DIR}/include
+    ${ZEPHYR_NRF_MODULE_DIR}/include/tfm
+    ${ZEPHYR_NRF_MODULE_DIR}/include
     )
 
   target_sources(platform_s
@@ -135,8 +159,8 @@ if(TFM_PARTITION_PLATFORM)
   target_include_directories(platform_ns
     PUBLIC
     include
-    ${NRF_DIR}/include/tfm
-    ${NRF_DIR}/include
+    ${ZEPHYR_NRF_MODULE_DIR}/include/tfm
+    ${ZEPHYR_NRF_MODULE_DIR}/include
     )
 
   target_compile_definitions(platform_ns

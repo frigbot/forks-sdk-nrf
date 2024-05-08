@@ -19,6 +19,26 @@ config DFU_TARGET_MCUBOOT
 	help
 	  Enable support for updates that are performed by MCUboot.
 
+config DFU_TARGET_SMP
+	bool "DFU SMP target for external update support"
+	depends on SMP_CLIENT
+	depends on MCUMGR_GRP_IMG_CLIENT
+	depends on MCUMGR_GRP_OS_CLIENT
+	select MCUMGR_GRP_OS_CLIENT_RESET
+	select MCUMGR_GRP_OS_CLIENT_ECHO
+	help
+	  Enable support for Update external MCU by SMP client.
+
+if DFU_TARGET_SMP
+
+config DFU_TARGET_SMP_IMAGE_LIST_SIZE
+	int "Supported Image list size"
+	default 2
+	help
+	  Define size for Image cache list.
+
+endif
+
 config DFU_TARGET_STREAM
 	bool "Generic DFU stream target"
 	depends on STREAM_FLASH_ERASE
@@ -49,7 +69,7 @@ config DFU_TARGET_MODEM_DELTA
 	bool "Modem delta update support"
 	imply DOWNLOAD_CLIENT_RANGE_REQUESTS
 	default y
-	depends on SOC_NRF9160_SICA
+	depends on SOC_SERIES_NRF91X
 	help
 	  Enable support for updates to the modem firmware.
 
@@ -71,7 +91,7 @@ endif # DFU_TARGET_MODEM_DELTA
 
 config DFU_TARGET_FULL_MODEM
 	bool "Full Modem update support"
-	depends on SOC_NRF9160_SICA
+	depends on SOC_SERIES_NRF91X
 	depends on DFU_TARGET_STREAM
 	depends on STREAM_FLASH
 	depends on FMFU_FDEV
@@ -83,7 +103,7 @@ config DFU_TARGET_FULL_MODEM
 config DFU_TARGET_FULL_MODEM_EXT_FLASH_SIZE
 	hex
 	depends on DFU_TARGET_FULL_MODEM
-	default 0x400000 if SOC_NRF9160
+	default 0x400000 if SOC_SERIES_NRF91X
 
 config DFU_TARGET_FULL_MODEM_USE_EXT_PARTITION
 	depends on DFU_TARGET_FULL_MODEM

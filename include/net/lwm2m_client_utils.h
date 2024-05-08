@@ -144,37 +144,134 @@ int lwm2m_init_location(void);
 #endif
 
 #if defined(CONFIG_LWM2M_CLIENT_UTILS_FIRMWARE_UPDATE_OBJ_SUPPORT)
-/**
- * @brief Firmware update state change event callback.
- *
- * @param[in] update_state LwM2M Firmware Update object states
- *
- * @return Callback returns a negative error code (errno.h) indicating
- *         reason of failure or 0 for success.
- */
-typedef int (*lwm2m_firmware_get_update_state_cb_t)(uint8_t update_state);
+
+/** Firmware update callback events. */
+enum lwm2m_fota_event_id {
+	/** Download process started */
+	LWM2M_FOTA_DOWNLOAD_START,
+	/** Download process finished */
+	LWM2M_FOTA_DOWNLOAD_FINISHED,
+	/** Request for update new image */
+	LWM2M_FOTA_UPDATE_IMAGE_REQ,
+	/** Request to reconnect the modem and LwM2M client*/
+	LWM2M_FOTA_UPDATE_MODEM_RECONNECT_REQ,
+	/** Fota process fail or cancelled  */
+	LWM2M_FOTA_UPDATE_ERROR
+};
+
+/** Event data for id LWM2M_FOTA_DOWNLOAD_START. */
+struct lwm2m_fota_download_start {
+	/** Object Instance  id for event */
+	uint16_t obj_inst_id;
+};
+
+/** Event data for id LWM2M_FOTA_DOWNLOAD_FINISHED. */
+struct lwm2m_fota_download_finished {
+	/** Object Instance ID for event */
+	uint16_t obj_inst_id;
+	/** DFU type */
+	int dfu_type;
+};
+
+/** Event data for id LWM2M_FOTA_UPDATE_IMAGE_REQ. */
+struct lwm2m_fota_update_request {
+	/** Object Instance ID for event */
+	uint16_t obj_inst_id;
+	/** DFU type */
+	int dfu_type;
+};
+
+/** Event data for ID LWM2M_FOTA_UPDATE_MODEM_RECONNECT_REQ. */
+struct lwm2m_fota_reconnect {
+	/** Object Instance ID for event */
+	uint16_t obj_inst_id;
+};
+
+/** Event data for ID LWM2M_FOTA_UPDATE_ERROR. */
+struct lwm2m_fota_update_failure {
+	/** Object Instance ID for event */
+	uint16_t obj_inst_id;
+	/** FOTA failure result */
+	uint8_t update_failure;
+};
+
+struct lwm2m_fota_event {
+	/** Fota event ID and indicate used Data structure */
+	enum lwm2m_fota_event_id id;
+	union {
+		/** LWM2M_FOTA_DOWNLOAD_START */
+		struct lwm2m_fota_download_start download_start;
+		/** LWM2M_FOTA_DOWNLOAD_FINISHED */
+		struct lwm2m_fota_download_finished download_ready;
+		/** LWM2M_FOTA_UPDATE_IMAGE_REQ */
+		struct lwm2m_fota_update_request update_req;
+		/** LWM2M_FOTA_UPDATE_MODEM_RECONNECT_REQ */
+		struct lwm2m_fota_reconnect reconnect_req;
+		/** LWM2M_FOTA_UPDATE_ERROR */
+		struct lwm2m_fota_update_failure failure;
+	};
+};
 
 /**
- * @brief Set event callback for firmware update changes.
+ * @brief Firmware update event callback.
  *
- * LwM2M clients use this function to register a callback for receiving the
- * update state changes when performing a firmware update.
+ * @param[in] event LwM2M Firmware Update object event structure
  *
- * @param[in] cb A callback function to receive firmware update state changes or NULL for disable.
+ * This callback is used for indicating firmware update states, to prepare the application
+ * for an update, and to request for reconnecting the modem after the firmware update.
+ *
+ * Event handler is getting event callback when Firmware update utils library change states.
+ *
+ * LWM2M_FOTA_DOWNLOAD_START: Indicate that download or upload of a new image is started.
+ *
+ * LWM2M_FOTA_DOWNLOAD_FINISHED: Indicate that Image is delivered.
+ *
+ * LWM2M_FOTA_UPDATE_IMAGE_REQ: Request a permission to update an image.
+ * Callback handler may return zero to grant permission for update. Otherwise it may
+ * return negative error code to cancel the update or positive value to indicate that
+ * update should be postponed that amount of seconds.
+ *
+ * LWM2M_FOTA_UPDATE_MODEM_RECONNECT_REQ: Request a reconnect and initialize the modem after a
+ * firmware update.
+ * The callback handler may return 0 to indicate that the application is handling the reconnect.
+ * Modem initialization and LwM2M client re-connection needs to be handled outside of the callback
+ * context.
+ * Otherwise, return -1 to indicate that the device is rebooting
+ *
+ * LWM2M_FOTA_UPDATE_ERROR: Indicate that FOTA process have failed or cancelled.
+ *
+ * @return zero indicating OK or negative error code indicating an failure and will mark the
+ *         whole FOTA process to failed.
+ *         Positive return code will postpone the request, but can only be used in
+ *         LWM2M_FOTA_UPDATE_IMAGE_REQ event.
  */
-void lwm2m_firmware_set_update_state_cb(lwm2m_firmware_get_update_state_cb_t cb);
+typedef int (*lwm2m_firmware_event_cb_t)(struct lwm2m_fota_event *event);
 
 /**
  * @brief Firmware read callback
  */
 void *firmware_read_cb(uint16_t obj_inst_id, size_t *data_len);
+
 /**
- * @brief Verify active firmware image
+ * @brief Initialize Firmware update utils library
+ *
+ * @return Zero if success, negative error code otherwise.
  */
 int lwm2m_init_firmware(void);
 
 /**
+ * @brief Initialize Firmware update utils library with callback
+ *
+ * @param[in] cb A callback function to receive firmware update state changes.
+ *
+ * @return Zero if success, negative error code otherwise.
+ */
+int lwm2m_init_firmware_cb(lwm2m_firmware_event_cb_t cb);
+
+/**
  * @brief Initialize Image Update object
+ *
+ * @return Zero if success, negative error code otherwise.
  */
 int lwm2m_init_image(void);
 #endif
@@ -185,7 +282,7 @@ int lwm2m_init_image(void);
  *
  * @return Zero if success, negative error code otherwise.
  */
-int lwm2m_init_connmon(const struct device *dev);
+int lwm2m_init_connmon(void);
 #endif
 
 #if defined(CONFIG_LWM2M_CLIENT_UTILS_CELL_CONN_OBJ_SUPPORT)
@@ -239,6 +336,51 @@ int lwm2m_rai_get(enum lwm2m_rai_mode *mode);
  * @return Zero if success, negative error code otherwise.
  */
 int lwm2m_rai_req(enum lwm2m_rai_mode mode);
+
+/**
+ * @brief Enable connection pre-evaluation module.
+ *
+ * @param min_energy_estimate Minimum estimated energy consumption
+ * when data transmission is started.
+ * @param maximum_delay_s Maximum time in seconds to delay
+ * data transmission.
+ * @param poll_period_ms Time period in milliseconds before new
+ * energy estimation.
+ *
+ * @return Zero if success, negative error code otherwise.
+ */
+int lwm2m_utils_enable_conneval(enum lte_lc_energy_estimate min_energy_estimate,
+				uint64_t maximum_delay_s, uint64_t poll_period_ms);
+
+/**
+ * @brief Disable connection pre-evaluation.
+ */
+void lwm2m_utils_disable_conneval(void);
+
+/**
+ * @brief Start connection pre-evaluation.
+ *
+ * This evaluation may block or alter the ongoing event to prevent LwM2M engine from initiating
+ * transfers when network conditions are poor.
+ *
+ * @param client Pointer to LwM2M context
+ * @param client_event pointer to LwM2M RD client events
+ *
+ * @return Zero if success, negative error code otherwise.
+ */
+int lwm2m_utils_conneval(struct lwm2m_ctx *client, enum lwm2m_rd_client_event *client_event);
+
+/**
+ * @brief LwM2M utils connection event handler.
+ *
+ * This function should be called from an event handler registered to lwm2m_rd_client_start()
+ * before normal event handler part.
+ *
+ * @param client client A pointer to LwM2M context.
+ * @param client_event A pointer to LwM2M RD client events.
+ */
+void lwm2m_utils_connection_manage(struct lwm2m_ctx *client,
+				      enum lwm2m_rd_client_event *client_event);
 
 /* Advanced firmare object support */
 uint8_t lwm2m_adv_firmware_get_update_state(uint16_t obj_inst_id);

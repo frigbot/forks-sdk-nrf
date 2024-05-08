@@ -9,6 +9,7 @@
 #include <platform/nrfconnect/ExternalFlashManager.h>
 
 #if CONFIG_CHIP_OTA_REQUESTOR
+#include "ota_image_processor_base_impl.h"
 #include <platform/nrfconnect/OTAImageProcessorImpl.h>
 
 /**
@@ -28,6 +29,16 @@ chip::DeviceLayer::OTAImageProcessorImpl &GetOTAImageProcessor();
  * an update so the confirmation must be done on the OTA provider side.
  */
 void InitBasicOTARequestor();
+
+/**
+ * Check if the current image is the first boot the after OTA update and if so
+ * confirm it in MCUBoot.
+ *
+ * @return CHIP_NO_ERROR if the image has been confirmed, or it is not the first
+ * boot after the OTA update.
+ * Other CHIP_ERROR codes if the image could not be confirmed.
+ */
+void OtaConfirmNewImage();
 
 #endif /* CONFIG_CHIP_OTA_REQUESTOR */
 

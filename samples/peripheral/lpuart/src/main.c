@@ -82,7 +82,7 @@ static void uart_callback(const struct device *dev,
 	}
 
 	case UART_RX_BUF_RELEASED:
-		k_mem_slab_free(&uart_slab, (void **)&evt->data.rx_buf.buf);
+		k_mem_slab_free(&uart_slab, (void *)evt->data.rx_buf.buf);
 		break;
 
 	case UART_RX_DISABLED:
@@ -119,7 +119,7 @@ static void async(const struct device *lpuart)
 	}
 }
 
-void main(void)
+int main(void)
 {
 	const struct device *lpuart = DEVICE_DT_GET(DT_NODELABEL(lpuart));
 
@@ -130,4 +130,6 @@ void main(void)
 	} else {
 		async(lpuart);
 	}
+
+	return 0;
 }

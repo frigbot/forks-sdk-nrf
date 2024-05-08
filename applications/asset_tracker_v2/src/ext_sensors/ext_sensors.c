@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Nordic Semiconductor ASA
+ * Copyright (c) 2023 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
@@ -11,8 +11,8 @@
 #include <stdlib.h>
 #include <math.h>
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-#include "ext_sensors_bsec.h"
+#if defined(CONFIG_BME68X_IAQ)
+#include <drivers/bme68x_iaq.h>
 #endif
 
 #include "ext_sensors.h"
@@ -75,13 +75,35 @@ static struct env_sensor press_sensor = {
 	.dev = DEVICE_DT_GET(DT_ALIAS(pressure_sensor)),
 };
 
+#if defined(CONFIG_BME68X_IAQ)
+static struct env_sensor iaq_sensor = {
+	.channel = SENSOR_CHAN_IAQ,
+	.dev = DEVICE_DT_GET(DT_ALIAS(iaq_sensor)),
+
+};
+#endif
+
 /** Sensor struct for the low-power accelerometer */
 static struct env_sensor accel_sensor_lp = {
 	.channel = SENSOR_CHAN_ACCEL_XYZ,
 	.dev = DEVICE_DT_GET(DT_ALIAS(accelerometer)),
 };
 
+static struct sensor_trigger adxl362_sensor_trigger_motion = {
+		.chan = SENSOR_CHAN_ACCEL_XYZ,
+		.type = SENSOR_TRIG_MOTION
+};
+
+static struct sensor_trigger adxl362_sensor_trigger_stationary = {
+		.chan = SENSOR_CHAN_ACCEL_XYZ,
+		.type = SENSOR_TRIG_STATIONARY
+};
+
 #if defined(CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION)
+static struct sensor_trigger adxl372_sensor_trigger = {
+	.chan = SENSOR_CHAN_ACCEL_XYZ,
+	.type = SENSOR_TRIG_THRESHOLD
+};
 /** Sensor struct for the high-G accelerometer */
 static struct env_sensor accel_sensor_hg = {
 	.channel = SENSOR_CHAN_ACCEL_XYZ,
@@ -128,7 +150,7 @@ static void accelerometer_trigger_handler(const struct device *dev,
 
 		break;
 	default:
-		LOG_ERR("Unknown trigger");
+		LOG_ERR("Unknown trigger: %d", trig->type);
 	}
 }
 
@@ -181,15 +203,15 @@ int ext_sensors_init(ext_sensor_handler_t handler)
 
 	evt_handler = handler;
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	int err = ext_sensors_bsec_init();
-
-	if (err) {
-		LOG_ERR("ext_sensors_bsec_init, error: %d", err);
-		evt.type = EXT_SENSOR_EVT_BME680_BSEC_ERROR;
+#if defined(CONFIG_BME68X_IAQ)
+	if (!device_is_ready(iaq_sensor.dev)) {
+		LOG_ERR("Air quality sensor device is not ready");
+		evt.type = EXT_SENSOR_EVT_AIR_QUALITY_ERROR;
 		evt_handler(&evt);
 	}
-#else
+#endif /* if defined(CONFIG_BME68X_IAQ) */
+
+
 	if (!device_is_ready(temp_sensor.dev)) {
 		LOG_ERR("Temperature sensor device is not ready");
 		evt.type = EXT_SENSOR_EVT_TEMPERATURE_ERROR;
@@ -207,7 +229,6 @@ int ext_sensors_init(ext_sensor_handler_t handler)
 		evt.type = EXT_SENSOR_EVT_PRESSURE_ERROR;
 		evt_handler(&evt);
 	}
-#endif /* if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC) */
 
 	if (!device_is_ready(accel_sensor_lp.dev)) {
 		LOG_ERR("Low-power accelerometer device is not ready");
@@ -221,13 +242,8 @@ int ext_sensors_init(ext_sensor_handler_t handler)
 		evt.type = EXT_SENSOR_EVT_ACCELEROMETER_ERROR;
 		evt_handler(&evt);
 	} else {
-		struct sensor_trigger trig = {
-			.chan = SENSOR_CHAN_ACCEL_XYZ,
-			.type = SENSOR_TRIG_THRESHOLD
-		};
-
 		int err = sensor_trigger_set(accel_sensor_hg.dev,
-					     &trig, impact_trigger_handler);
+					     &adxl372_sensor_trigger, impact_trigger_handler);
 		if (err) {
 			LOG_ERR("Could not set trigger for device %s, error: %d",
 				accel_sensor_hg.dev->name, err);
@@ -243,10 +259,6 @@ int ext_sensors_temperature_get(double *ext_temp)
 	int err;
 	struct sensor_value data = {0};
 	struct ext_sensor_evt evt = {0};
-
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_temperature_get(ext_temp);
-#endif
 
 	err = sensor_sample_fetch_chan(temp_sensor.dev, SENSOR_CHAN_ALL);
 	if (err) {
@@ -279,10 +291,6 @@ int ext_sensors_humidity_get(double *ext_hum)
 	struct sensor_value data = {0};
 	struct ext_sensor_evt evt = {0};
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_humidity_get(ext_hum);
-#endif
-
 	err = sensor_sample_fetch_chan(humid_sensor.dev, SENSOR_CHAN_ALL);
 	if (err) {
 		LOG_ERR("Failed to fetch data from %s, error: %d",
@@ -314,10 +322,6 @@ int ext_sensors_pressure_get(double *ext_press)
 	struct sensor_value data = {0};
 	struct ext_sensor_evt evt = {0};
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_pressure_get(ext_press);
-#endif
-
 	err = sensor_sample_fetch_chan(press_sensor.dev, SENSOR_CHAN_ALL);
 	if (err) {
 		LOG_ERR("Failed to fetch data from %s, error: %d",
@@ -337,7 +341,7 @@ int ext_sensors_pressure_get(double *ext_press)
 	}
 
 	k_spinlock_key_t key = k_spin_lock(&(press_sensor.lock));
-	*ext_press = sensor_value_to_double(&data);
+	*ext_press = sensor_value_to_double(&data) / 1000.0f;
 	k_spin_unlock(&(press_sensor.lock), key);
 
 	return 0;
@@ -345,10 +349,38 @@ int ext_sensors_pressure_get(double *ext_press)
 
 int ext_sensors_air_quality_get(uint16_t *ext_bsec_air_quality)
 {
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_air_quality_get(ext_bsec_air_quality);
-#endif
+#if defined(CONFIG_BME68X_IAQ)
+
+	int err;
+	struct sensor_value data = {0};
+	struct ext_sensor_evt evt = {0};
+
+	err = sensor_sample_fetch_chan(iaq_sensor.dev, SENSOR_CHAN_ALL);
+	if (err) {
+		LOG_ERR("Failed to fetch data from %s, error: %d",
+			iaq_sensor.dev->name, err);
+		evt.type = EXT_SENSOR_EVT_AIR_QUALITY_ERROR;
+		evt_handler(&evt);
+		return -ENODATA;
+	}
+
+	err = sensor_channel_get(iaq_sensor.dev, iaq_sensor.channel, &data);
+	if (err) {
+		LOG_ERR("Failed to fetch data from %s, error: %d",
+			iaq_sensor.dev->name, err);
+		evt.type = EXT_SENSOR_EVT_AIR_QUALITY_ERROR;
+		evt_handler(&evt);
+		return -ENODATA;
+	}
+
+	k_spinlock_key_t key = k_spin_lock(&(iaq_sensor.lock));
+	*ext_bsec_air_quality = sensor_value_to_double(&data);
+	k_spin_unlock(&(iaq_sensor.lock), key);
+
+	return 0;
+#else
 	return -ENOTSUP;
+#endif /* defined(CONFIG_BME68X_IAQ) */
 }
 
 int ext_sensors_accelerometer_threshold_set(double threshold, bool upper)
@@ -436,20 +468,15 @@ int ext_sensors_inactivity_timeout_set(double inact_time)
 int ext_sensors_accelerometer_trigger_callback_set(bool enable)
 {
 	int err;
-	struct sensor_trigger trig = {
-		.chan = SENSOR_CHAN_ACCEL_XYZ,
-		.type = SENSOR_TRIG_MOTION
-	};
 	struct ext_sensor_evt evt = {0};
 
 	sensor_trigger_handler_t handler = enable ? accelerometer_trigger_handler : NULL;
 
-	err = sensor_trigger_set(accel_sensor_lp.dev, &trig, handler);
+	err = sensor_trigger_set(accel_sensor_lp.dev, &adxl362_sensor_trigger_motion, handler);
 	if (err) {
 		goto error;
 	}
-	trig.type = SENSOR_TRIG_STATIONARY;
-	err = sensor_trigger_set(accel_sensor_lp.dev, &trig, handler);
+	err = sensor_trigger_set(accel_sensor_lp.dev, &adxl362_sensor_trigger_stationary, handler);
 	if (err) {
 		goto error;
 	}

@@ -66,7 +66,7 @@ endmacro()
 
 function(get_board_without_ns_suffix board_in board_out)
   string(REGEX REPLACE "(_?ns)$" "" board_in_without_suffix ${board_in})
-  if(NOT ${board_in} STREQUAL ${board_in_without_suffix})
+  if(NOT "${board_in}" STREQUAL "${board_in_without_suffix}")
     if (NOT CONFIG_ARM_NONSECURE_FIRMWARE)
       message(FATAL_ERROR "${board_in} is not a valid name for a board without "
       "'CONFIG_ARM_NONSECURE_FIRMWARE' set. This because the 'ns'/'_ns' ending "
@@ -297,10 +297,23 @@ function(set_shared)
   set(multi_args  "PROPERTY")
   cmake_parse_arguments(SHARE "${flags}" "${single_args}" "${multi_args}" ${ARGN})
 
+  if(SYSBUILD)
+    # Sysbuild can read the cache directly, no reason for an extra share file.
+    list(POP_FRONT SHARE_PROPERTY listname)
+    if(SHARE_APPEND)
+      list(APPEND ${listname} ${SHARE_PROPERTY})
+      list(REMOVE_DUPLICATES ${listname})
+      set(SHARE_PROPERTY ${${listname}})
+    endif()
+    set(${listname} "${SHARE_PROPERTY}" CACHE INTERNAL "shared var")
+    return()
+  endif()
+
   check_arguments_required("set_shared" SHARE IMAGE FILE)
 
   check_arguments_exclusive("set_shared" SHARE FILE IMAGE PROPERTY APPEND)
   check_arguments_exclusive("set_shared" SHARE IMAGE FILE)
+
 
   set(prop_target ${IMAGE_NAME}_shared_property_target)
   if(NOT TARGET ${prop_target})
@@ -378,4 +391,32 @@ function(get_shared var)
     )
     set(${var} ${${var}} PARENT_SCOPE)
   endif()
+endfunction()
+
+#
+# Usage
+#   import_pm_config(<dotconf_file> <keys>)
+#
+# Import variables from a partition manager output .config file
+# (usually pm.config or pm_<DOMAIN>.config) into the CMake namespace.
+#
+# <dotconf_file>: Absolute path to the file.
+# <keys_out>:     Output variable, which will be populated with a list
+#                 of variable names loaded from <dotconf_file>.
+#
+function(import_pm_config dotconf_file keys_out)
+  file(STRINGS ${dotconf_file} DOTCONF_LIST ENCODING "UTF-8")
+  foreach(LINE ${DOTCONF_LIST})
+    # Parse `key=value` assignments, where every key is prefixed with `PM_`.
+    if("${LINE}" MATCHES "(^PM_[^=]+)=(.*$)")
+      set(key "${CMAKE_MATCH_1}")
+
+      # If the value is surrounded by quotation marks, strip them out.
+      string(REGEX REPLACE "\"(.*)\"" "\\1" value "${CMAKE_MATCH_2}")
+
+      list(APPEND keys "${key}")
+      set("${key}" "${value}" PARENT_SCOPE)
+    endif()
+  endforeach()
+  set("${keys_out}" "${keys}" PARENT_SCOPE)
 endfunction()

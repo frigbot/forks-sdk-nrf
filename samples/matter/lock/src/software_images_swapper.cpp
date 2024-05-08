@@ -15,7 +15,7 @@
 
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_DECLARE(app, CONFIG_MATTER_LOG_LEVEL);
+LOG_MODULE_DECLARE(app, CONFIG_CHIP_APP_LOG_LEVEL);
 
 int SoftwareImagesSwapper::Swap(const ImageLocation &source, SoftwareImagesSwapDoneCallback swapDoneCallback)
 {
@@ -31,6 +31,7 @@ int SoftwareImagesSwapper::Swap(const ImageLocation &source, SoftwareImagesSwapD
 
 	uint8_t *dfuImageBuffer = (uint8_t *)malloc(kBufferSize);
 	if (!dfuImageBuffer) {
+		LOG_ERR("Cannot allocate application DFU image buffer");
 		return -ENOMEM;
 	}
 
@@ -79,6 +80,7 @@ int SoftwareImagesSwapper::SwapImage(uint32_t address, uint32_t size, uint8_t id
 
 	uint8_t *flashImageBuffer = (uint8_t *)malloc(kBufferSize);
 	if (!flashImageBuffer) {
+		LOG_ERR("Cannot allocate application flash image buffer");
 		return -ENOMEM;
 	}
 

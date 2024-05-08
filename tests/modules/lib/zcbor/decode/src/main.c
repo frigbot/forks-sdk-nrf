@@ -6,14 +6,15 @@
 #include <zephyr/ztest.h>
 #include "test_decode.h"
 #include "zcbor_encode.h"
+#include "zcbor_decode.h"
 
-static void test_decode(void)
+ZTEST(lib_zcbor_test1, test_decode)
 {
 	uint8_t payload[32] = {0};
 	uint32_t payload_len;
 	uint8_t time[] = {1, 2, 3, 4, 5, 6, 7, 8};
 
-	ZCBOR_STATE_D(states, 4, payload, sizeof(payload), 1);
+	ZCBOR_STATE_E(states, 4, payload, sizeof(payload), 1);
 	struct Test test;
 	bool res;
 	int int_res;
@@ -42,11 +43,4 @@ static void test_decode(void)
 	zassert_mem_equal(test._Test_name_tstr[1].value, "Bar", test._Test_name_tstr[1].len, NULL);
 }
 
-void test_main(void)
-{
-	ztest_test_suite(lib_zcbor_test1,
-	     ztest_unit_test(test_decode)
-	 );
-
-	ztest_run_test_suite(lib_zcbor_test1);
-}
+ZTEST_SUITE(lib_zcbor_test1, NULL, NULL, NULL, NULL, NULL);

@@ -22,7 +22,7 @@
 LOG_MODULE_REGISTER(MODULE, CONFIG_CLOUD_INTEGRATION_LOG_LEVEL);
 
 #if !defined(CONFIG_CLOUD_CLIENT_ID_USE_CUSTOM)
-#define LWM2M_INTEGRATION_CLIENT_ID_LEN 15
+#define LWM2M_INTEGRATION_CLIENT_ID_LEN (HW_ID_LEN - 1)
 #else
 #define LWM2M_INTEGRATION_CLIENT_ID_LEN (sizeof(CONFIG_CLOUD_CLIENT_ID) - 1)
 #endif
@@ -158,6 +158,9 @@ static void rd_client_event(struct lwm2m_ctx *client, enum lwm2m_rd_client_event
 			state = CONNECTED;
 		}
 		break;
+	case LWM2M_RD_CLIENT_EVENT_REG_UPDATE:
+		LOG_DBG("LWM2M_RD_CLIENT_EVENT_REG_UPDATE");
+		break;
 	case LWM2M_RD_CLIENT_EVENT_DEREGISTER_FAILURE:
 		LOG_WRN("LWM2M_RD_CLIENT_EVENT_DEREGISTER_FAILURE");
 		cloud_wrap_evt.type = CLOUD_WRAP_EVT_ERROR;
@@ -173,6 +176,9 @@ static void rd_client_event(struct lwm2m_ctx *client, enum lwm2m_rd_client_event
 		LOG_ERR("LWM2M_RD_CLIENT_EVENT_NETWORK_ERROR");
 		cloud_wrap_evt.type = CLOUD_WRAP_EVT_ERROR;
 		notify = true;
+		break;
+	case LWM2M_RD_CLIENT_EVENT_DEREGISTER:
+		LOG_DBG("LWM2M_RD_CLIENT_EVENT_DEREGISTER");
 		break;
 	default:
 		LOG_ERR("Unknown event: %d", client_event);
@@ -257,45 +263,38 @@ static int modem_mode_request_cb(enum lte_lc_func_mode new_mode, void *user_data
 	return CONFIG_LWM2M_INTEGRATION_MODEM_MODE_REQUEST_RETRY_SECONDS;
 }
 
-static int firmware_update_state_cb(uint8_t update_state)
+static int lwm2m_firmware_event_cb(struct lwm2m_fota_event *event)
 {
-	int err;
-	uint8_t update_result;
 	struct cloud_wrap_event cloud_wrap_evt = { 0 };
 
-	/* Get the firmware object update result code */
-	err = lwm2m_get_u8(&LWM2M_OBJ(5, 0, 5), &update_result);
-	if (err) {
-		LOG_ERR("Failed getting firmware result resource value");
-		cloud_wrap_evt.type = CLOUD_WRAP_EVT_ERROR;
-		cloud_wrap_evt.err = err;
-		cloud_wrapper_notify_event(&cloud_wrap_evt);
-		return 0;
-	}
-
-	switch (update_state) {
-	case STATE_IDLE:
-		LOG_DBG("STATE_IDLE, result: %d", update_result);
-
-		/* If the FOTA state returns to its base state STATE_IDLE, the FOTA failed. */
-		cloud_wrap_evt.type = CLOUD_WRAP_EVT_FOTA_ERROR;
-		break;
-	case STATE_DOWNLOADING:
-		LOG_DBG("STATE_DOWNLOADING, result: %d", update_result);
+	switch (event->id) {
+	case LWM2M_FOTA_DOWNLOAD_START:
+		/* FOTA download process Started */
+		LOG_DBG("STATE_DOWNLOADING, instance: %d", event->download_start.obj_inst_id);
 		cloud_wrap_evt.type = CLOUD_WRAP_EVT_FOTA_START;
 		break;
-	case STATE_DOWNLOADED:
-		LOG_DBG("STATE_DOWNLOADED, result: %d", update_result);
+
+	case LWM2M_FOTA_DOWNLOAD_FINISHED:
+		/* FOTA download process finished */
+		LOG_DBG("STATE_DOWNLOADED, instance %d", event->download_ready.obj_inst_id);
 		return 0;
-	case STATE_UPDATING:
-		LOG_DBG("STATE_UPDATING, result: %d", update_result);
-		/* Disable further callbacks from FOTA */
-		lwm2m_firmware_set_update_state_cb(NULL);
+
+	case LWM2M_FOTA_UPDATE_IMAGE_REQ:
+		/* FOTA update new image */
+		LOG_DBG("STATE_UPDATING, instance %d, dfu_type:%d", event->update_req.obj_inst_id,
+			event->update_req.dfu_type);
 		return 0;
-	default:
-		LOG_ERR("Unknown state: %d", update_state);
+
+	case LWM2M_FOTA_UPDATE_ERROR:
+		/* Fota process failed or was cancelled */
+		LOG_ERR("FOTA failure %d by status %d", event->failure.obj_inst_id,
+			event->failure.update_failure);
 		cloud_wrap_evt.type = CLOUD_WRAP_EVT_FOTA_ERROR;
 		break;
+	case LWM2M_FOTA_UPDATE_MODEM_RECONNECT_REQ:
+		/* FOTA requests modem re-initialization and client re-connection */
+		/* Return -1 to cause normal system reboot */
+		return -1;
 	}
 
 	cloud_wrapper_notify_event(&cloud_wrap_evt);
@@ -372,7 +371,7 @@ int cloud_wrap_init(cloud_wrap_evt_handler_t event_handler)
 		return err;
 	}
 
-	err = lwm2m_init_firmware();
+	err = lwm2m_init_firmware_cb(lwm2m_firmware_event_cb);
 	if (err) {
 		LOG_ERR("lwm2m_init_firmware, error: %d", err);
 		return err;
@@ -415,8 +414,6 @@ int cloud_wrap_init(cloud_wrap_evt_handler_t event_handler)
 		LOG_ERR("lwm2m_register_exec_callback, error: %d", err);
 		return err;
 	}
-
-	lwm2m_firmware_set_update_state_cb(firmware_update_state_cb);
 
 	wrapper_evt_handler = event_handler;
 	state = DISCONNECTED;
@@ -477,13 +474,14 @@ int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id,
 {
 	ARG_UNUSED(buf);
 	ARG_UNUSED(len);
+	ARG_UNUSED(ack);
 	ARG_UNUSED(id);
 
 	int err;
 
-	err = lwm2m_send(&client, path_list, len, ack);
+	err = lwm2m_send_cb(&client, path_list, len, NULL);
 	if (err) {
-		LOG_ERR("lwm2m_send, error: %d", err);
+		LOG_ERR("lwm2m_send_cb, error: %d", err);
 		return err;
 	}
 
@@ -500,13 +498,14 @@ int cloud_wrap_ui_send(char *buf, size_t len, bool ack, uint32_t id,
 {
 	ARG_UNUSED(buf);
 	ARG_UNUSED(len);
+	ARG_UNUSED(ack);
 	ARG_UNUSED(id);
 
 	int err;
 
-	err = lwm2m_send(&client, path_list, len, ack);
+	err = lwm2m_send_cb(&client, path_list, len, NULL);
 	if (err) {
-		LOG_ERR("lwm2m_send, error: %d", err);
+		LOG_ERR("lwm2m_send_cb, error: %d", err);
 		return err;
 	}
 
@@ -518,17 +517,19 @@ int cloud_wrap_cloud_location_send(char *buf, size_t len, bool ack, uint32_t id)
 	ARG_UNUSED(buf);
 	ARG_UNUSED(len);
 	ARG_UNUSED(id);
+	ARG_UNUSED(ack);
 
-	return location_assistance_ground_fix_request_send(&client, ack);
+	return location_assistance_ground_fix_request_send(&client);
 }
 
-int cloud_wrap_agps_request_send(char *buf, size_t len, bool ack, uint32_t id)
+int cloud_wrap_agnss_request_send(char *buf, size_t len, bool ack, uint32_t id)
 {
 	ARG_UNUSED(buf);
 	ARG_UNUSED(len);
 	ARG_UNUSED(id);
+	ARG_UNUSED(ack);
 
-	return location_assistance_agps_request_send(&client, ack);
+	return location_assistance_agnss_request_send(&client);
 }
 
 int cloud_wrap_pgps_request_send(char *buf, size_t len, bool ack, uint32_t id)
@@ -536,8 +537,9 @@ int cloud_wrap_pgps_request_send(char *buf, size_t len, bool ack, uint32_t id)
 	ARG_UNUSED(buf);
 	ARG_UNUSED(len);
 	ARG_UNUSED(id);
+	ARG_UNUSED(ack);
 
-	return location_assistance_pgps_request_send(&client, ack);
+	return location_assistance_pgps_request_send(&client);
 }
 
 int cloud_wrap_memfault_data_send(char *buf, size_t len, bool ack, uint32_t id)

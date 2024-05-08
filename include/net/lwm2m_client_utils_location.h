@@ -34,43 +34,66 @@
 #define LOCATION_ASSIST_RESULT_CODE_TEMP_ERR		1
 
 /**
- * @brief Set the A-GPS request mask
+ * @typedef location_assistance_result_code_cb_t
+ * @brief Callback for location assistance result.
  *
- * @param agps_req The A-GPS request coming from the GNSS module.
- * @return Returns a negative error code (errno.h) indicating
- *         reason of failure or 0 for success.
+ * This callback is called whenever there is a new result in the location assistance and the
+ * location assistance resend handler has been initialized.
+ *
+ * @param result_code Contains following possible result codes:
+ *                    LOCATION_ASSIST_RESULT_CODE_OK when there are no problems
+ *                    LOCATION_ASSIST_RESULT_CODE_PERMANENT_ERR when there is a permanent error
+ *                    between LwM2M-server and the nRF Cloud. Location assistance library will no
+ *                    longer send any requests. Device needs reboot for assistance library to
+ *                    resume operation.
+ *                    LOCATION_ASSIST_RESULT_CODE_TEMP_ERR when there is a temporary error between
+ *                    LwM2M-server and the nRF Cloud. The library automatically uses exponential
+ *                    backoff for the retries.
  */
-int location_assistance_agps_set_mask(const struct nrf_modem_gnss_agps_data_frame *agps_req);
+typedef void (*location_assistance_result_code_cb_t)(int32_t result_code);
 
 /**
- * @brief Send the A-GPS assistance request to LwM2M server
+ * @brief Set the location assistance result code calback
  *
- * @param ctx LwM2M client context for sending the data.
- * @param confirmable Boolean value to indicate should the server return confirmation.
+ * @param cb callback function to call when there is a new result from location assistance.
+ */
+void location_assistance_set_result_code_cb(location_assistance_result_code_cb_t cb);
+
+/**
+ * @brief Set the A-GNSS request mask
+ *
+ * @param agnss_req The A-GNSS request coming from the GNSS module.
  * @return Returns a negative error code (errno.h) indicating
  *         reason of failure or 0 for success.
  */
-int location_assistance_agps_request_send(struct lwm2m_ctx *ctx, bool confirmable);
+int location_assistance_agnss_set_mask(const struct nrf_modem_gnss_agnss_data_frame *agnss_req);
+
+/**
+ * @brief Send the A-GNSS assistance request to LwM2M server
+ *
+ * @param ctx LwM2M client context for sending the data.
+ * @return Returns a negative error code (errno.h) indicating
+ *         reason of failure or 0 for success.
+ */
+int location_assistance_agnss_request_send(struct lwm2m_ctx *ctx);
 
 /**
  * @brief Send the Ground Fix request to LwM2M server
  *
  * @param ctx LwM2M client context for sending the data.
- * @param confirmable Boolean value to indicate should the server return confirmation.
  * @return Returns a negative error code (errno.h) indicating
  *         reason of failure or 0 for success.
  */
-int location_assistance_ground_fix_request_send(struct lwm2m_ctx *ctx, bool confirmable);
+int location_assistance_ground_fix_request_send(struct lwm2m_ctx *ctx);
 
 /**
  * @brief Send the P-GPS assistance request to LwM2M server
  *
  * @param ctx LwM2M client context for sending the data.
- * @param confirmable Boolean value to indicate should the server return confirmation.
  * @return Returns a negative error code (errno.h) indicating
  *         reason of failure or 0 for success.
  */
-int location_assistance_pgps_request_send(struct lwm2m_ctx *ctx, bool confirmable);
+int location_assistance_pgps_request_send(struct lwm2m_ctx *ctx);
 
 /**
  * @brief Initialize the location assistance library resend handler.
@@ -94,11 +117,11 @@ int location_event_handler_init(struct lwm2m_ctx *ctx);
 #define GNSS_ASSIST_OBJECT_ID 33625
 
 /**
- * @brief Set an A-GPS assistance request mask for the object
+ * @brief Set an A-GNSS assistance request mask for the object
  *
  * @param request_mask A bitmask containing the requested parameters from the server
  */
-void location_assist_agps_request_set(uint32_t request_mask);
+void location_assist_agnss_request_set(uint32_t request_mask);
 
 /**
  * @brief Set the satellite elevation mask angle above the ground. Satellites
@@ -106,14 +129,14 @@ void location_assist_agps_request_set(uint32_t request_mask);
  *
  * @param elevation_mask Elevation mask angle in degrees above the ground level
  */
-void location_assist_agps_set_elevation_mask(int32_t elevation_mask);
+void location_assist_agnss_set_elevation_mask(int32_t elevation_mask);
 
 /**
  * @brief Get the satellite elevation mask currently stored in the resource.
  *
  * @return Returns the currently stored elevation mask as degrees above the ground level.
  */
-int32_t location_assist_agps_get_elevation_mask(void);
+int32_t location_assist_agnss_get_elevation_mask(void);
 
 /**
  * @brief Set prediction count for the P-GPS query

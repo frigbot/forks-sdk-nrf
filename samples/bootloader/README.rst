@@ -9,7 +9,7 @@
 
 The |NSIB| (NSIB), previously also known as *B0* or ``b0``, is a secure bootloader built and maintained by Nordic Semiconductor.
 It is specifically tailored for the :ref:`immutable bootloader architecture <immutable_bootloader>` of a secure boot chain.
-It can verify and boot a second-stage bootloader or application while providing a persistent and reliable :term:`Root of Trust (RoT)`.
+It can verify and boot a second-stage bootloader or application while providing a persistent and reliable :ref:`Root of Trust (RoT) <ug_bootloader_chain_of_trust>`.
 
 See :ref:`ug_bootloader` for more information about the full bootloader chain.
 
@@ -32,43 +32,22 @@ The NSIB can only boot images that enable the firmware information module, see t
 Overview
 ********
 
-The NSIB implements a simple and reliable :term:`Root of Trust (RoT)` for a secure boot chain:
+The NSIB implements a simple and reliable :ref:`Root of Trust (RoT) <ug_bootloader_chain_of_trust>` for a secure boot chain, as described in the :ref:`immutable_bootloader` conceptual documentation.
 
-1. Locks the flash memory.
+For locking the flash memory, the NSIB uses the :ref:`fprotect_readme` driver.
 
-   To enable the RoT, it locks the flash memory address range containing itself and its configuration using the hardware available on the given architecture.
+For the signature verification, to save space, NSIB only stores the hashes of the provisioned keys and compares only the hashes of these keys.
+The next image has metadata containing the full public key that corresponds to the private key used to sign the firmware.
+This public key is checked against the provisioned hashes of public keys to determine if the image is valid.
+All public key hashes at lower indices than the matching hash are permanently invalidated at this point.
+You can use this mechanism to decommission compromised keys.
 
-   For additional details on locking, see the :ref:`fprotect_readme` driver.
+.. note::
+   Make sure you provide NSIB with your own keys, as described in :ref:`bootloader_provisioning`, before you program it.
 
-#. Selects the next slot in the boot chain.
-
-   The next stage in the boot chain can either be an application or another bootloader:
-
-   * When the next stage is an application, you can allocate one or two slots for it.
-   * When the next stage is a second-stage bootloader, two slots are always used.
-
-   Each slot has a version number, and the bootloader will select the slot with the latest version.
-
-   For more information about creating a second stage bootloader, see :ref:`ug_bootloader_adding_upgradable`.
-
-#. Verifies the next stage in the boot chain.
-
-   The next image has metadata containing the full public key that corresponds to the private key used to sign the firmware.
-   This public key is checked against the provisioned hashes of public keys to determine if the image is valid.
-
-   All public key hashes at lower indices than the matching hash are permanently invalidated at this point.
-   You can use this mechanism to decommission broken keys.
-
-#. Boots the next stage in the boot chain.
-
-   All peripherals that have been used are reset and the next stage is booted.
-
-#. Shares the cryptographic library.
-
-   The NSIB shares some of its functionality through an external API (``EXT_API``).
-
-   For more information on the process, see :ref:`doc_bl_crypto`.
-   For more information on ``EXT_API``, see :ref:`doc_fw_info_ext_api`.
+At the end of the RoT establishment, the NSIB also shares some of its functionality through an external API (``EXT_API``).
+For more information on the process, see :ref:`doc_bl_crypto`.
+For more information on ``EXT_API``, see :ref:`doc_fw_info_ext_api`.
 
 .. _bootloader_provisioning:
 
@@ -107,36 +86,7 @@ Because of these design constraints, the following limitations apply:
 .. note::
    On the nRF9160 and nRF5340, the UICR can only be erased by erasing the entire flash memory.
 
-To erase the entire flash memory, do the following:
-
-.. tabs::
-
-   .. tab:: Command Line
-
-      Using west:
-
-      .. code-block:: console
-
-         west flash --erase
-
-      Using nrfjprog:
-
-      .. code-block:: console
-
-         nrfjprog -f NRF91 --eraseall
-
-   .. tab:: |VSC|
-
-      Using the :guilabel:`Actions View` in |nRFVSC|:
-
-         1. Go to the :guilabel:`Actions View`.
-         #. Move the cursor over the :guilabel:`Flash` action.
-         #. Click :guilabel:`Erase And Flash To Board` on the right side of the :guilabel:`Flash` action.
-
-      Using the |VSC| Command Palette:
-
-         1. Open the |VSC| Command Palette.
-         #. Type ``Erase and Flash to Board`` and select the highlighted option.
+For information how to erase the entire flash memory when flashing, see :ref:`programming`.
 
 .. _bootloader_flash_layout:
 
@@ -207,14 +157,16 @@ A non-volatile *monotonic counter* can be stored in the *Provision* area and is 
 
 Counter updates are written to slots in the *Provision* area, with each new counter update occupying a new slot.
 For this reason, the number of counter updates, and therefore firmware version updates, is limited.
-Enable the counter with the :kconfig:option:`CONFIG_SB_MONOTONIC_COUNTER` option.
 
-The supported number of updates depends on the size of the *Provision* area and how much of that area is taken up by other features, like public key hashes.
-See option :kconfig:option:`CONFIG_SB_NUM_VER_COUNTER_SLOTS` for more details.
+Using a counter is optional and can be configured for the application using configuration options.
+You can also configure the supported number of updates, but the number is limited by the size of the *Provision* area and how much of that area is taken up by other features, like public key hashes.
+In addition, you can configure what firmware version of the image you want to boot.
 
-To set the firmware version for an image, build it using the :kconfig:option:`CONFIG_FW_INFO_FIRMWARE_VERSION` option set appropriately.
+For NSIB, the configuration options are :kconfig:option:`CONFIG_SB_MONOTONIC_COUNTER`, :kconfig:option:`CONFIG_SB_NUM_VER_COUNTER_SLOTS`, and :kconfig:option:`CONFIG_FW_INFO_FIRMWARE_VERSION`.
 
-To set options for child images, such as MCUBoot, see the :ref:`ug_multi_image_variables` section.
+For MCUboot, the configuration options are :kconfig:option:`CONFIG_MCUBOOT_HARDWARE_DOWNGRADE_PREVENTION`, :kconfig:option:`CONFIG_MCUBOOT_HW_DOWNGRADE_PREVENTION_COUNTER_SLOTS`, and :kconfig:option:`CONFIG_MCUBOOT_HW_DOWNGRADE_PREVENTION_COUNTER_VALUE`.
+
+To set options for child images, such as NSIB and MCUboot, see the :ref:`ug_multi_image_variables` section.
 
 .. bootloader_monotonic_counter_end
 
@@ -222,11 +174,6 @@ Configuration
 *************
 
 |config|
-
-FEM support
-===========
-
-.. include:: /includes/sample_fem_support.txt
 
 .. _bootloader_build_and_run:
 

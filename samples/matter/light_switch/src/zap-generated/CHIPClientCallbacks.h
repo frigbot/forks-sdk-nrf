@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <app-common/zap-generated/af-structs.h>
 #include <app-common/zap-generated/cluster-objects.h>
 #include <app/InteractionModelEngine.h>
 #include <app/data-model/DecodableList.h>
@@ -34,19 +33,31 @@ typedef void (*IdentifyGeneratedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
 typedef void (*IdentifyAcceptedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
+typedef void (*IdentifyEventListListAttributeCallback)(void *context,
+						       const chip::app::DataModel::DecodableList<chip::EventId> &data);
 typedef void (*IdentifyAttributeListListAttributeCallback)(
-	void *context, const chip::app::DataModel::DecodableList<chip::AttributeId> &data);
-typedef void (*ScenesAttributeListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::AttributeId> &data);
 typedef void (*OnOffGeneratedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
 typedef void (*OnOffAcceptedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
+typedef void (*OnOffEventListListAttributeCallback)(void *context,
+						    const chip::app::DataModel::DecodableList<chip::EventId> &data);
 typedef void (*OnOffAttributeListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::AttributeId> &data);
 typedef void (*LevelControlGeneratedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
 typedef void (*LevelControlAcceptedCommandListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
+typedef void (*LevelControlEventListListAttributeCallback)(
+	void *context, const chip::app::DataModel::DecodableList<chip::EventId> &data);
 typedef void (*LevelControlAttributeListListAttributeCallback)(
+	void *context, const chip::app::DataModel::DecodableList<chip::AttributeId> &data);
+typedef void (*OtaSoftwareUpdateProviderGeneratedCommandListListAttributeCallback)(
+	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
+typedef void (*OtaSoftwareUpdateProviderAcceptedCommandListListAttributeCallback)(
+	void *context, const chip::app::DataModel::DecodableList<chip::CommandId> &data);
+typedef void (*OtaSoftwareUpdateProviderEventListListAttributeCallback)(
+	void *context, const chip::app::DataModel::DecodableList<chip::EventId> &data);
+typedef void (*OtaSoftwareUpdateProviderAttributeListListAttributeCallback)(
 	void *context, const chip::app::DataModel::DecodableList<chip::AttributeId> &data);

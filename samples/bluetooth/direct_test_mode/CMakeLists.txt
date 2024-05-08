@@ -5,14 +5,14 @@
 #
 cmake_minimum_required(VERSION 3.20.0)
 
-if (DEFINED SHIELD AND ${BOARD} STREQUAL "nrf5340dk_nrf5340_cpunet")
+if(DEFINED SHIELD AND "${BOARD}" STREQUAL "nrf5340dk_nrf5340_cpunet")
   string(REPLACE " " ";" SHIELD_LIST "${SHIELD}")
-  foreach(sh IN_LIST SHIELD_LIST)
-    if (${sh} STREQUAL "nrf21540_ek")
-      if (CONFIG_DTM_USB)
-        set(remote_shell_DTC_OVERLAY_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/nrf21540_ek_usb.overlay)
+  foreach(sh IN LISTS SHIELD_LIST)
+    if("${sh}" STREQUAL "nrf21540ek")
+      if(CONFIG_DTM_USB)
+        set(remote_shell_DTC_OVERLAY_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/nrf21540ek_usb.overlay)
       else()
-        set(remote_shell_DTC_OVERLAY_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/nrf21540_ek.overlay)
+        set(remote_shell_DTC_OVERLAY_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/nrf21540ek.overlay)
       endif()
 
       break()
@@ -20,24 +20,43 @@ if (DEFINED SHIELD AND ${BOARD} STREQUAL "nrf5340dk_nrf5340_cpunet")
   endforeach()
 endif()
 
-if (NOT DEFINED remote_shell_DTC_OVERLAY_FILE AND CONFIG_DTM_USB)
+if(NOT DEFINED remote_shell_DTC_OVERLAY_FILE AND CONFIG_DTM_USB)
   set(remote_shell_DTC_OVERLAY_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/usb.overlay)
 endif()
 
-if (CONFIG_DTM_USB)
+if(CONFIG_DTM_USB)
   set(remote_shell_CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell/prj_usb.conf)
+endif()
+
+if("${BOARD}" STREQUAL "nrf5340dk_nrf5340_cpunet")
+  if(NOT "${EXTRA_CONF_FILE}" STREQUAL "overlay-hci-nrf53.conf")
+    set(EXTRA_DTC_OVERLAY_FILE "${CMAKE_CURRENT_LIST_DIR}/conf/remote_shell_nrf53.overlay")
+  endif()
 endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(NONE)
 
-# Application sources
-add_subdirectory(src/fem)
+target_include_directories(app PRIVATE ./src)
+
+target_sources_ifdef(CONFIG_DTM_TRANSPORT_TWOWIRE app PRIVATE
+  src/transport/dtm_uart_twowire.c
+  src/transport/dtm_uart_wait.c
+)
+
+target_sources_ifdef(CONFIG_DTM_TRANSPORT_HCI app PRIVATE src/transport/dtm_hci.c)
+
+if(CONFIG_NCS_SAMPLE_DTM_REMOTE_HCI_CHILD_IMAGE)
+  target_sources(app PRIVATE src/transport/hci_uart_remote.c)
+  target_include_directories(app PRIVATE ./rpc)
+else()
+  target_sources_ifdef(CONFIG_DTM_TRANSPORT_HCI app PRIVATE src/transport/hci_uart.c)
+endif()
 
 # NORDIC SDK APP START
 target_sources(app PRIVATE
-  src/main.c
   src/dtm.c
   src/dtm_hw.c
+  src/main.c
 )
 # NORDIC SDK APP END

@@ -46,6 +46,13 @@ extern "C" {
 #define SETTINGS_AK_NAME_MAX_SIZE \
 	(sizeof(SETTINGS_AK_FULL_PREFIX) + SETTINGS_AK_NAME_MAX_SUFFIX_LEN)
 
+/** Settings key name for Account Key order. */
+#define SETTINGS_AK_ORDER_KEY_NAME "order"
+
+/** Full settings key name for Account Key order (including subtree name). */
+#define SETTINGS_AK_ORDER_FULL_NAME \
+	(SETTINGS_AK_SUBTREE_NAME SETTINGS_NAME_SEPARATOR_STR SETTINGS_AK_ORDER_KEY_NAME)
+
 /** Max number of Account Keys. */
 #define ACCOUNT_KEY_CNT CONFIG_BT_FAST_PAIR_STORAGE_ACCOUNT_KEY_MAX
 
@@ -82,20 +89,8 @@ static inline uint8_t account_key_id_to_idx(uint8_t account_key_id)
 	return (account_key_id - ACCOUNT_KEY_MIN_ID) % ACCOUNT_KEY_CNT;
 }
 
-/** Generate next Account Key ID.
- *
- * @param[in] account_key_id Current Account Key ID.
- *
- * @return Next Account Key ID.
- */
-static inline uint8_t next_account_key_id(uint8_t account_key_id)
-{
-	if (account_key_id == ACCOUNT_KEY_MAX_ID) {
-		return ACCOUNT_KEY_MIN_ID;
-	}
-
-	return account_key_id + 1;
-}
+/** Clear storage data loaded to RAM. */
+void fp_storage_ak_ram_clear(void);
 
 #ifdef __cplusplus
 }

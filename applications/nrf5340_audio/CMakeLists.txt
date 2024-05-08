@@ -33,6 +33,12 @@ if ((CONFIG_AUDIO_DFU EQUAL 1) OR (CONFIG_AUDIO_DFU EQUAL 2))
     list(APPEND empty_net_core_OVERLAY_CONFIG
         "${CMAKE_CURRENT_LIST_DIR}/dfu/conf/overlay-empty_net_core.conf"
     )
+
+    # Disable pretick anomaly workaround. The workaround causes a resource conflict between B0N and
+    # the controller, and as the controller does not use RTC to wake up from sleep it is not
+    # affected by the anomaly.
+    list(APPEND empty_net_core_b0n_CONFIG_SOC_NRF53_RTC_PRETICK n)
+
     if (CONFIG_B0N_MINIMAL)
         set(min_b0n_flag "-m")
         list(APPEND empty_net_core_b0n_OVERLAY_CONFIG overlay-minimal-size.conf)
@@ -62,10 +68,10 @@ target_sources(app PRIVATE
 
 # Include application events and configuration headers
 zephyr_library_include_directories(
+    include
     src/audio
     src/bluetooth
     src/drivers
-    src/events
     src/modules
     src/utils
     src/utils/macros
@@ -78,7 +84,6 @@ zephyr_library_include_directories(app PRIVATE
 add_subdirectory(src/audio)
 add_subdirectory(src/bluetooth)
 add_subdirectory(src/drivers)
-add_subdirectory(src/events)
 add_subdirectory(src/modules)
 add_subdirectory(src/utils)
 
@@ -93,10 +98,11 @@ endif()
 
 if ((CONFIG_AUDIO_DFU EQUAL 1) OR (CONFIG_AUDIO_DFU EQUAL 2))
     set(BLE5_CTR_SIGN_STEP ${APPLICATION_BINARY_DIR}/dummy)
+    file(TO_CMAKE_PATH ${ZEPHYR_NRF_MODULE_DIR}/lib/bin/bt_ll_acs_nrf53/bin CMAKE_STYLE_LL_ACS_NRF53_BIN)
 
     add_custom_command(
         COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/tools/buildprog/ble5-ctr-rpmsg_sign.py
-        -I ${CMAKE_CURRENT_LIST_DIR}/dfu/bin/ -b ${APPLICATION_BINARY_DIR} ${min_b0n_flag}
+        -I ${CMAKE_STYLE_LL_ACS_NRF53_BIN} -b ${APPLICATION_BINARY_DIR} ${min_b0n_flag}
         OUTPUT ${BLE5_CTR_SIGN_STEP}
         DEPENDS merged_domains_hex
         COMMENT "Running post-build ble5-ctr signing step..."

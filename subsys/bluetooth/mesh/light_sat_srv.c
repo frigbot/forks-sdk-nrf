@@ -28,11 +28,9 @@ struct settings_data {
 } __packed;
 
 #if CONFIG_BT_SETTINGS
-static void store_timeout(struct k_work *work)
+static void sat_srv_pending_store(struct bt_mesh_model *model)
 {
-	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-	struct bt_mesh_light_sat_srv *srv = CONTAINER_OF(
-		dwork, struct bt_mesh_light_sat_srv, store_timer);
+	struct bt_mesh_light_sat_srv *srv = model->user_data;
 
 	struct settings_data data = {
 		.range = srv->range,
@@ -50,9 +48,7 @@ static void store_timeout(struct k_work *work)
 static void store(struct bt_mesh_light_sat_srv *srv)
 {
 #if CONFIG_BT_SETTINGS
-	k_work_schedule(
-		&srv->store_timer,
-		K_SECONDS(CONFIG_BT_MESH_MODEL_SRV_STORE_TIMEOUT));
+	bt_mesh_model_data_store_schedule(srv->model);
 #endif
 }
 
@@ -89,7 +85,6 @@ static int sat_set(struct bt_mesh_model *model, struct bt_mesh_msg_ctx *ctx,
 	 * in macro:
 	 */
 	set.lvl = net_buf_simple_pull_le16(buf);
-	set.lvl = CLAMP(set.lvl, srv->range.min, srv->range.max);
 	tid = net_buf_simple_pull_u8(buf);
 
 	if (tid_check_and_update(&srv->prev_transaction, tid, ctx) != 0) {
@@ -212,7 +207,7 @@ static void lvl_set(struct bt_mesh_lvl_srv *lvl_srv,
 
 	uint16_t sat = LVL_TO_SAT(lvl_set->lvl);
 
-	set.lvl = MIN(MAX(sat, srv->range.min), srv->range.max);
+	set.lvl = sat;
 	set.transition = lvl_set->transition;
 	bt_mesh_light_sat_srv_set(srv, ctx, &set, &status);
 
@@ -384,6 +379,7 @@ static int sat_srv_pub_update(struct bt_mesh_model *model)
 static int sat_srv_init(struct bt_mesh_model *model)
 {
 	struct bt_mesh_light_sat_srv *srv = model->user_data;
+	int err;
 
 	srv->model = model;
 	srv->pub.update = sat_srv_pub_update;
@@ -391,22 +387,27 @@ static int sat_srv_init(struct bt_mesh_model *model)
 	net_buf_simple_init_with_data(&srv->buf, srv->pub_data,
 				      ARRAY_SIZE(srv->pub_data));
 
-#if CONFIG_BT_SETTINGS
-	k_work_init_delayable(&srv->store_timer, store_timeout);
-
-#if IS_ENABLED(CONFIG_EMDS)
+#if IS_ENABLED(CONFIG_BT_SETTINGS) && IS_ENABLED(CONFIG_EMDS)
 	srv->emds_entry.entry.id = EMDS_MODEL_ID(model);
 	srv->emds_entry.entry.data = (uint8_t *)&srv->transient;
 	srv->emds_entry.entry.len = sizeof(srv->transient);
-	int err = emds_entry_add(&srv->emds_entry);
+	err = emds_entry_add(&srv->emds_entry);
 
 	if (err) {
 		return err;
 	}
 #endif
+
+#if defined(CONFIG_BT_MESH_COMP_PAGE_1)
+	err = bt_mesh_model_correspond(srv->hsl->model, model);
+
+	if (err) {
+		return err;
+	}
 #endif
 
-	return bt_mesh_model_extend(model, srv->lvl.model);
+	err = bt_mesh_model_extend(model, srv->lvl.model);
+	return err;
 }
 
 static int sat_srv_settings_set(struct bt_mesh_model *model, const char *name,
@@ -451,13 +452,18 @@ const struct bt_mesh_model_cb _bt_mesh_light_sat_srv_cb = {
 	.init = sat_srv_init,
 	.settings_set = sat_srv_settings_set,
 	.reset = sat_srv_reset,
+#if CONFIG_BT_SETTINGS
+	.pending_store = sat_srv_pending_store,
+#endif
 };
 
 void bt_mesh_light_sat_srv_set(struct bt_mesh_light_sat_srv *srv,
 			       struct bt_mesh_msg_ctx *ctx,
-			       const struct bt_mesh_light_sat *set,
+			       struct bt_mesh_light_sat *set,
 			       struct bt_mesh_light_sat_status *status)
 {
+	set->lvl = CLAMP(set->lvl, srv->range.min, srv->range.max);
+
 	srv->transient.last = set->lvl;
 	srv->handlers->set(srv, ctx, set, status);
 

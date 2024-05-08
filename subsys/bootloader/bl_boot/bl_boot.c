@@ -10,25 +10,29 @@
 #include <fw_info.h>
 #include <fprotect.h>
 #include <hal/nrf_clock.h>
-#ifdef CONFIG_UART_NRFX
-#ifdef CONFIG_UART_0_NRF_UART
+#ifdef CONFIG_UART_NRFX_UART
 #include <hal/nrf_uart.h>
-#else
-#include <hal/nrf_uarte.h>
 #endif
+#ifdef CONFIG_UART_NRFX_UARTE
+#include <hal/nrf_uarte.h>
 #endif
 
 static void uninit_used_peripherals(void)
 {
-#ifdef CONFIG_UART_0_NRF_UART
+#ifdef CONFIG_UART_NRFX
+#if defined(CONFIG_HAS_HW_NRF_UART0)
 	nrf_uart_disable(NRF_UART0);
-#elif defined(CONFIG_UART_0_NRF_UARTE)
+#elif defined(CONFIG_HAS_HW_NRF_UARTE0)
 	nrf_uarte_disable(NRF_UARTE0);
-#elif defined(CONFIG_UART_1_NRF_UARTE)
+#endif
+#if defined(CONFIG_HAS_HW_NRF_UARTE1)
 	nrf_uarte_disable(NRF_UARTE1);
-#elif defined(CONFIG_UART_2_NRF_UARTE)
+#endif
+#if defined(CONFIG_HAS_HW_NRF_UARTE2)
 	nrf_uarte_disable(NRF_UARTE2);
 #endif
+#endif /* CONFIG_UART_NRFX */
+
 	nrf_clock_int_disable(NRF_CLOCK, 0xFFFFFFFF);
 }
 
@@ -41,7 +45,7 @@ extern uint32_t _vector_table_pointer;
 
 void bl_boot(const struct fw_info *fw_info)
 {
-#if !(defined(CONFIG_SOC_NRF9160) \
+#if !(defined(CONFIG_SOC_SERIES_NRF91X) \
       || defined(CONFIG_SOC_NRF5340_CPUNET) \
       || defined(CONFIG_SOC_NRF5340_CPUAPP))
 	/* Protect bootloader storage data after firmware is validated so

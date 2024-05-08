@@ -10,7 +10,7 @@ Socket AT commands
 The following commands list contains socket-related AT commands.
 The application can open up to 8 sockets and select the active one among them.
 
-For more information on the networking services, visit the `BSD Networking Services Spec Reference`_.
+For more information on the networking services, see the `Zephyr Network APIs`_.
 
 Socket #XSOCKET
 ===============
@@ -144,7 +144,7 @@ Response syntax
 * The ``<cid>`` parameter is an integer.
   It represents ``cid`` in the ``+CGDCONT`` command.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -170,27 +170,9 @@ Response syntax
 
 ::
 
-   #XSOCKET: <list of op>,<list of types>,<list of roles>,<cid>
+   #XSOCKET: <list of ops>,<list of types>,<list of roles>,<cid>
 
-
-* The ``<list of op>`` value can be one of the following integers:
-
-  * ``0`` - Close a socket.
-  * ``1`` - Open a socket for IP protocol family version 4.
-  * ``2`` - Open a socket for IP protocol family version 6.
-
-* The ``<list of types>`` value can be one of the following integers:
-
-  * ``1`` - Set ``SOCK_STREAM`` for the stream socket type using the TCP protocol.
-  * ``2`` - Set ``SOCK_DGRAM`` for the datagram socket type using the UDP protocol.
-  * ``3`` - Set ``SOCK_RAW`` for the raw socket type using a generic IP protocol.
-
-* The ``<list of roles>`` value can be one of the following integers:
-
-  * ``0`` - Client.
-  * ``1`` - Server.
-
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -199,7 +181,7 @@ Examples
    #XSOCKET: (0,1,2),(1,2,3),(0,1),<cid>
    OK
 
-Secure Socket #XSSOCKET
+Secure socket #XSSOCKET
 =======================
 
 The ``#XSSOCKET`` command allows you to open or close a secure socket, and to check the socket handle.
@@ -339,7 +321,7 @@ Response syntax
 * The ``<cid>`` value is an integer.
   It represents ``cid`` in the ``+CGDCONT`` command.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -365,32 +347,15 @@ Response syntax
 
 ::
 
-   #XSSOCKET: <list of op>,<list of types>,<list of roles>,<sec_tag>,<peer_verify>,<cid>
+   #XSSOCKET: <list of ops>,<list of types>,<list of roles>,<sec_tag>,<peer_verify>,<cid>
 
-
-* The ``<list of op>`` value can be one of the following integers:
-
-  * ``0`` - Close a secure socket.
-  * ``1`` - Open a secure socket for IP protocol family version 4.
-  * ``2`` - Open a secure socket for IP protocol family version 6.
-
-* The ``<list of types>>`` value can be one of the following integers.
-
-  * ``1`` - ``SOCK_STREAM`` for the stream socket type using the TLS 1.2 protocol.
-  * ``2`` - ``SOCK_DGRAM`` for the datagram socket type using the DTLS 1.2 protocol.
-
-* The ``<list of roles>`` value can be one of the following integers:
-
-  * ``0`` - Client
-  * ``1`` - Server
-
-Examples
+Example
 ~~~~~~~~
 
 ::
 
    AT#XSSOCKET=?
-   #XSSOCKET: (0,1,2),(1,2),<sec_tag>,<peer_verify>,<cid>
+   #XSSOCKET: (0,1,2),(1,2),(0,1),<sec_tag>,<peer_verify>,<cid>
    OK
 
 Select Socket #XSOCKETSELECT
@@ -422,7 +387,7 @@ Response syntax
 * The ``<handle>`` value is an integer.
   When positive or ``0``, the socket is valid.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -540,9 +505,66 @@ Syntax
   * ``0`` - Get
   * ``1`` - Set
 
-For a complete list of the supported SET ``<name>`` accepted parameters, see the `SETSOCKETOPT Service Spec Reference`_.
+* The ``<name>`` parameter can accept one of the following values:
 
-For a complete list of the supported GET ``<name>`` accepted parameters, see the `GETSOCKETOPT Service Spec Reference`_.
+  * ``2`` - :c:macro:`SO_REUSEADDR` (set-only).
+
+    * ``<value>`` is an integer that indicates whether the reuse of local addresses is enabled.
+      It is ``0`` for disabled or ``1`` for enabled.
+
+  * ``20`` - :c:macro:`SO_RCVTIMEO`.
+
+    * ``<value>`` is an integer that indicates the receive timeout in seconds.
+
+  * ``21`` - :c:macro:`SO_SNDTIMEO`.
+
+    * ``<value>`` is an integer that indicates the send timeout in seconds.
+
+  * ``30`` - :c:macro:`SO_SILENCE_ALL`.
+
+    * ``<value>`` is an integer that indicates whether ICMP echo replies for IPv4 and IPv6 are disabled.
+      It is ``0`` for allowing ICMP echo replies or ``1`` for disabling them.
+
+  * ``31`` - :c:macro:`SO_IP_ECHO_REPLY`.
+
+    * ``<value>`` is an integer that indicates whether ICMP echo replies for IPv4 are enabled.
+      It is ``0`` for disabled or ``1`` for enabled.
+
+  * ``32`` - :c:macro:`SO_IPV6_ECHO_REPLY`.
+
+    * ``<value>`` is an integer that indicates whether ICMP echo replies for IPv6 are enabled.
+      It is ``0`` for disabled or ``1`` for enabled.
+
+  * ``40`` - :c:macro:`SO_BINDTOPDN` (set-only).
+
+    * ``<value>`` is an integer that indicates the packet data network ID to bind to.
+
+  * ``50`` - :c:macro:`SO_RAI_NO_DATA` (set-only).
+    Immediately release the RRC.
+
+    * ``<value>`` is ignored.
+
+  * ``51`` - :c:macro:`SO_RAI_LAST` (set-only).
+    Enter Radio Resource Control (RRC) idle immediately after the next send operation.
+
+    * ``<value>`` is ignored.
+
+  * ``52`` - :c:macro:`SO_RAI_ONE_RESP` (set-only).
+    Wait for one incoming packet after the next send operation, before entering RRC idle mode.
+
+    * ``<value>`` is ignored.
+
+  * ``53`` - :c:macro:`SO_RAI_ONGOING` (set-only).
+    Keep RRC in connected mode after the next send operation (client).
+
+    * ``<value>`` is ignored.
+
+  * ``54`` - :c:macro:`SO_RAI_WAIT_MORE` (set-only).
+    Keep RRC in connected mode after the next send operation (server).
+
+    * ``<value>`` is ignored.
+
+See `nRF socket options`_ for explanation of the supported options.
 
 Examples
 ~~~~~~~~
@@ -580,9 +602,9 @@ Response syntax
 
 ::
 
-   #XSOCKETOPT: <list of op>,<name>,<value>
+   #XSOCKETOPT: <list of ops>,<name>,<value>
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -591,7 +613,9 @@ Examples
    #XSOCKETOPT: (0,1),<name>,<value>
    OK
 
-Secure Socket options #XSSOCKETOPT
+.. _SLM_AT_SSOCKETOPT:
+
+Secure socket options #XSSOCKETOPT
 ==================================
 
 The ``#XSSOCKETOPT`` command allows you to set secure socket options.
@@ -615,22 +639,57 @@ Syntax
 
 * The ``<name>`` parameter can accept one of the following values:
 
-  * ``2`` - ``TLS_HOSTNAME``.
-    ``<value>`` is a string.
-  * ``4`` - ``TLS_CIPHERSUITE_USED`` (get-only).
-    It accepts the IANA assigned cipher suite identifier of the chosen cipher suite.
-  * ``5`` - ``TLS_PEER_VERIFY``.
-    ``<value>`` is an integer and can be either ``0`` or ``1``.
-  * ``12`` - ``TLS_SESSION_CACHE``.
-    ``<value>`` is an integer and can be either ``0`` or ``1``.
-  * ``13`` - ``TLS_SESSION_CACHE_PURGE``.
-    ``<value>`` can accept any integer value.
-  * ``14`` - ``TLS_DTLS_HANDSHAKE_TIMEO``.
-    ``<value>`` is the timeout in seconds and can be one of the following integers: ``1``, ``3``, ``7``, ``15``, ``31``, ``63``, ``123``.
+  * ``2`` - :c:macro:`TLS_HOSTNAME` (set-only).
 
-For a complete list of the supported ``<name>`` accepted parameters, see the `SETSOCKETOPT Service Spec Reference`_.
+    * ``<value>`` is a string that indicates the hostname to check against during TLS handshakes.
+      It can be ``NULL`` to disable hostname verification.
 
-Examples
+  * ``4`` - :c:macro:`TLS_CIPHERSUITE_USED` (get-only).
+    The TLS cipher suite chosen during the TLS handshake.
+    This option is only supported with modem firmware 2.0.0 and newer.
+
+  * ``5`` - :c:macro:`TLS_PEER_VERIFY`.
+
+    * ``<value>`` is an integer that indicates what peer verification level should be used.
+      It is ``0`` for none, ``1`` for optional or ``2`` for required.
+
+  * ``12`` - :c:macro:`TLS_SESSION_CACHE`.
+
+    * ``<value>`` is an integer that indicates whether TLS session caching should be used.
+      It is ``0`` for disabled or ``1`` for enabled.
+
+  * ``13`` - :c:macro:`TLS_SESSION_CACHE_PURGE` (set-only).
+    Indicates that the TLS session cache should be deleted.
+
+    * ``<value>`` can be any integer value.
+
+  * ``14`` - :c:macro:`TLS_DTLS_CID` (set-only).
+
+    * ``<value>`` is an integer that indicates the DTLS connection identifier setting.
+      It can be one of the following values:
+
+      * ``0`` - :c:macro:`TLS_DTLS_CID_DISABLED`.
+      * ``1`` - :c:macro:`TLS_DTLS_CID_SUPPORTED`.
+      * ``2`` - :c:macro:`TLS_DTLS_CID_ENABLED`.
+
+    This option is only supported with modem firmware 1.3.5 and newer.
+    See :ref:`nrfxlib:dtls_cid_setting` for more details regarding the allowed values.
+
+  * ``15`` - :c:macro:`TLS_DTLS_CID_STATUS` (get-only).
+    It is the DTLS connection identifier status.
+    It can be retrieved after the DTLS handshake.
+    This option is only supported with modem firmware 1.3.5 and newer.
+    See :ref:`nrfxlib:dtls_cid_status` for more details regarding the returned values.
+
+  * ``18`` - :c:macro:`TLS_DTLS_HANDSHAKE_TIMEO`.
+
+    * ``<value>`` is an integer that indicates the DTLS handshake timeout in seconds.
+      It can be one of the following values: ``1``, ``3``, ``7``, ``15``, ``31``, ``63``, ``123``.
+
+See `nRF socket options`_ for explanation of the supported options.
+
+
+Example
 ~~~~~~~~
 
 ::
@@ -660,15 +719,15 @@ Response syntax
 
 ::
 
-   #XSSOCKETOPT: <list of op>,<name>,<value>
+   #XSSOCKETOPT: <list of ops>,<name>,<value>
 
-Examples
+Example
 ~~~~~~~~
 
 ::
 
    AT#XSSOCKETOPT=?
-   #XSSOCKETOPT: (1),<name>,<value>
+   #XSSOCKETOPT: (0,1),<name>,<value>
    OK
 
 
@@ -694,7 +753,7 @@ Syntax
 * The ``<port>`` parameter is an unsigned 16-bit integer (0 - 65535).
   It represents the specific port to use for binding the socket.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -808,7 +867,7 @@ Response syntax
 
 There is no response.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -859,7 +918,7 @@ Response syntax
   It represents the socket handle of the accepted connection.
 * The ``<ip_addr>`` value indicates the IP address of the peer host.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -892,7 +951,7 @@ Response syntax
   * Positive - The incoming socket is valid.
   * ``0`` - There is no active incoming connection.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -937,7 +996,7 @@ Response syntax
 * The ``<size>`` value is an integer.
   It represents the actual number of bytes that has been sent.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -994,7 +1053,7 @@ Response syntax
 * The ``<data>`` value is a string that contains the data being received.
 * The ``<size>`` value is an integer that represents the actual number of bytes received.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -1051,7 +1110,7 @@ Response syntax
 * The ``<size>`` value is an integer.
   It represents the actual number of bytes that has been sent.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
@@ -1101,20 +1160,21 @@ Response syntax
 
 ::
 
-   #XRECVFROM: <size>,<ip_addr>
+   #XRECVFROM: <size>,"<ip_addr>",<port>
    <data>
 
 * The ``<data>`` value is a string that contains the data being received.
 * The ``<size>`` value is an integer that represents the actual number of bytes received.
-* The ``<ip_addr>`` value is a string that represents the IPv4 or IPv6 address of remote peer.
+* The ``<ip_addr>`` value is a string that represents the IPv4 or IPv6 address of the remote peer.
+* The ``<port>`` value is an integer that represents the UDP port of the remote peer.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
 
    AT#XRECVFROM=10
-   #XRECVFROM: 7,"192.168.1.100"
+   #XRECVFROM: 7,"192.168.1.100",24210
    Test OK
    OK
 
@@ -1222,13 +1282,13 @@ Response syntax
 * The ``<ip_addresses>`` value is a string.
   It indicates the IPv4 or IPv6 address of the resolved hostname.
 
-Examples
+Example
 ~~~~~~~~
 
 ::
 
-   at#xgetaddrinfo="www.google.com"
-   #XGETADDRINFO: "172.217.174.100"
+   AT#XGETADDRINFO="nordicsemi.com"
+   #XGETADDRINFO: "104.20.251.111"
    OK
 
 Read command

@@ -34,8 +34,6 @@ LOG_MODULE_REGISTER(sta, CONFIG_LOG_DEFAULT_LEVEL);
 				NET_EVENT_WIFI_DISCONNECT_RESULT)
 
 #define MAX_SSID_LEN        32
-#define DHCP_TIMEOUT        70
-#define CONNECTION_TIMEOUT  100
 #define STATUS_POLLING_MS   300
 
 /* 1000 msec = 1 sec */
@@ -211,7 +209,18 @@ static void net_mgmt_event_handler(struct net_mgmt_event_callback *cb,
 
 static int __wifi_args_to_params(struct wifi_connect_req_params *params)
 {
-	params->timeout = SYS_FOREVER_MS;
+
+	params->timeout =  CONFIG_STA_CONN_TIMEOUT_SEC * MSEC_PER_SEC;
+
+	if (params->timeout == 0) {
+		params->timeout = SYS_FOREVER_MS;
+	}
+
+	/* Defaults */
+	params->band = WIFI_FREQ_BAND_UNKNOWN;
+	params->channel = WIFI_CHANNEL_ANY;
+	params->security = WIFI_SECURITY_TYPE_NONE;
+	params->mfp = WIFI_MFP_OPTIONAL;
 
 	/* SSID */
 	params->ssid = CONFIG_STA_SAMPLE_SSID;
@@ -231,10 +240,6 @@ static int __wifi_args_to_params(struct wifi_connect_req_params *params)
 	params->psk = CONFIG_STA_SAMPLE_PASSWORD;
 	params->psk_length = strlen(params->psk);
 #endif
-	params->channel = WIFI_CHANNEL_ANY;
-
-	/* MFP (optional) */
-	params->mfp = WIFI_MFP_OPTIONAL;
 
 	return 0;
 }
@@ -280,9 +285,8 @@ int bytes_from_str(const char *str, uint8_t *bytes, size_t bytes_len)
 	return 0;
 }
 
-void main(void)
+int main(void)
 {
-	int i;
 	memset(&context, 0, sizeof(context));
 
 	net_mgmt_init_event_callback(&wifi_shell_mgmt_cb,
@@ -301,7 +305,8 @@ void main(void)
 	LOG_INF("Starting %s with CPU frequency: %d MHz", CONFIG_BOARD, SystemCoreClock/MHZ(1));
 	k_sleep(K_SECONDS(1));
 
-#ifdef CONFIG_BOARD_NRF7002DK_NRF5340
+#if defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP)
 	if (strlen(CONFIG_NRF700X_QSPI_ENCRYPTION_KEY)) {
 		char key[QSPI_KEY_LEN_BYTES];
 		int ret;
@@ -309,7 +314,7 @@ void main(void)
 		ret = bytes_from_str(CONFIG_NRF700X_QSPI_ENCRYPTION_KEY, key, sizeof(key));
 		if (ret) {
 			LOG_ERR("Failed to parse encryption key: %d\n", ret);
-			return;
+			return 0;
 		}
 
 		LOG_DBG("QSPI Encryption key: ");
@@ -321,13 +326,13 @@ void main(void)
 		ret = qspi_enable_encryption(key);
 		if (ret) {
 			LOG_ERR("Failed to enable encryption: %d\n", ret);
-			return;
+			return 0;
 		}
 		LOG_INF("QSPI Encryption enabled");
 	} else {
 		LOG_INF("QSPI Encryption disabled");
 	}
-#endif
+#endif /* CONFIG_BOARD_NRF700XDK_NRF5340 */
 
 	LOG_INF("Static IP address (overridable): %s/%s -> %s",
 		CONFIG_NET_CONFIG_MY_IPV4_ADDR,
@@ -337,17 +342,15 @@ void main(void)
 	while (1) {
 		wifi_connect();
 
-		for (i = 0; i < CONNECTION_TIMEOUT; i++) {
-			k_sleep(K_MSEC(STATUS_POLLING_MS));
+		while (!context.connect_result) {
 			cmd_wifi_status();
-			if (context.connect_result) {
-				break;
-			}
+			k_sleep(K_MSEC(STATUS_POLLING_MS));
 		}
+
 		if (context.connected) {
 			k_sleep(K_FOREVER);
-		} else if (!context.connect_result) {
-			LOG_ERR("Connection Timed Out");
 		}
 	}
+
+	return 0;
 }

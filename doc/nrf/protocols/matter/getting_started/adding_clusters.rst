@@ -94,97 +94,12 @@ This tool is provided with the Matter repository in the |NCS|.
 
 To edit clusters using the ZAP tool, complete the following steps:
 
-1. Download the ZAP package containing pre-compiled executables and libraries and extract it:
-
-   .. note::
-       You can download the package in a compatible version manually from the `ZCL Advanced Platform releases`_, but we recommend using a dedicated helper script that will do it for you.
-
-   a. Open your installation directory for the |NCS| in a command line.
-   #. Navigate to :file:`modules/lib/matter`.
-   #. Run the helper script to download and extract the ZAP package in the directory that corresponds to the *location_path* argument:
-
-      .. note::
-       The `-o` argument in the command is used to allow overwriting files, if they already exist in the given location.
-       Otherwise the script will display prompt during download and ask for user consent to overwrite the files directly.
-
-      .. parsed-literal::
-         :class: highlight
-
-         python scripts/setup/nrfconnect/get_zap.py -l *location_path* -o
-
-#. Verify the ZAP tool version by comparing the script output with the following possible cases:
-
-   * Case 1: If your currently installed ZAP version matches the recommended one, you will see a message similar to the following one:
-
-     .. code-block::
-
-        Your currenly installed ZAP tool version: 2022.12.20 matches the recommended one.
-
-     This means that your ZAP version is correct and the tool executable can be accessed from the operating system environment, so you can skip the following step about adding the ZAP tool to the system :envvar:`PATH` environment variable.
-
-   * Case 2: If your currently installed ZAP version does not match the recommended one or no ZAP version is installed on your device, you will see a message similar to the following one:
-
-     .. code-block::
-
-        Your currenly installed ZAP tool version 2022.12.19 does not match the recommended one: 2022.12.20.
-
-     Alternatively, this message can look like the following one:
-
-     .. code-block::
-
-        No ZAP tool version was found installed on this device.
-
-     In this case, the package download process will start automatically:
-
-     .. parsed-literal::
-        :class: highlight
-
-        Trying to download ZAP tool package matching your system and recommended version.
-        100% [......................................................................] 150136551 / 150136551
-        ZAP tool package was downloaded and extracted in the given location.
-
-        #######################################################################################
-        # Please add the following location to the system PATH: *package_extraction_location* #
-        #######################################################################################
-
-     .. note::
-         The *package_extraction_location* in the example output will be replaced by the *location_path* from the previous step, where you extracted the package.
-
-#. Add the *package_extraction_location* ZAP package location printed in the script output to the system :envvar:`PATH` environment variables.
-   This is not needed if your currently installed ZAP version matches the recommended one (case 1 from the previous step).
-
-   .. tabs::
-
-      .. group-tab:: Linux
-
-         For example, if you are using bash, run the following commands:
-
-         .. parsed-literal::
-            :class: highlight
-
-            echo 'export PATH=package_extraction_location:"$PATH"' >> ${HOME}/.bashrc
-            source ${HOME}/.bashrc
-
-      .. group-tab:: Windows
-
-         For the detailed instructions for adding :envvar:`PATH` environment variables on Windows, see :ref:`zephyr:env_vars`.
-
-      .. group-tab:: macOS
-
-         For example, if you are using bash, run the following commands:
-
-         .. parsed-literal::
-            :class: highlight
-
-            echo 'export PATH=package_extraction_location:"$PATH"' >> ${HOME}/.bash_profile
-            source ${HOME}/.bash_profile
-   ..
-
-#. Open the :file:`src/template.zap` for editing by running the following command, where ``samples/matter/sensor`` stands for the path where you copied the template sample in the first step of this guide.
+1. Complete the installation steps for the ZAP tool listed in :ref:`ug_matter_tools_installing_zap`.
+#. Open the :file:`src/template.zap` for editing by running the following command, where *sample_location* stands for the path where you copied the template sample in the first step of this guide, and *matter_root_location* stands for the path where Matter project is located:
 
    .. code-block::
 
-      zap ../../../nrf/samples/matter/sensor/src/template.zap
+      zap *sample_location*/src/template.zap --zcl *matter_root_location*/src/app/zap-templates/zcl/zcl.json --gen *matter_root_location*/src/app/zap-templates/app-templates.json
 
    The ZAP tool's Zigbee Cluster Configurator window appears.
 
@@ -204,7 +119,7 @@ To edit clusters using the ZAP tool, complete the following steps:
 
       Create New Endpoint menu in ZAP tool
 
-   The new cluster is created with both the Basic and Identify clusters enabled.
+   The new endpoint is created with both the Descriptor and Identify clusters enabled.
 #. Configure the On/Off cluster required for this endpoint:
 
    a. In the :guilabel:`Search Clusters` menu, find the On/Off cluster.
@@ -240,9 +155,18 @@ To edit clusters using the ZAP tool, complete the following steps:
 
    .. code-block::
 
-      python ./scripts/tools/zap/generate.py ../../../nrf/samples/matter/sensor/src/template.zap
+      python ./scripts/tools/zap/generate.py ../../../nrf/samples/matter/sensor/src/template.zap -t src/app/zap-templates/app-templates.json -o ../../../nrf/samples/matter/sensor/src/zap-generated
 
 At this point, new clusters have been added to the Matter device.
+
+.. note::
+   On the first run the ZAP tool creates a :file:`.zap` directory to store cached information for the following runs.
+   The default directory location is the user's home directory and it can be overridden by adding ``--stateDirectory`` and the location path to the invoked ZAP commands.
+
+   Introducing significant changes to the ZAP tool configuration, such as updating the tool version or changing which ZCL templates are used, can result in unexpected issues with the application when previously cached information in the :file:`.zap` directory is used.
+   The behavior of the application in such a case is undefined and it depends on the difference between the new configuration and the old cached data.
+   For example, it could result in problems with displaying specific information in the UI, generating new configuration, or even application crashes.
+   The solution is to remove the :file:`.zap` directory to clear the cached information.
 
 .. _ug_matter_creating_accessory_edit_loop:
 
@@ -327,7 +251,7 @@ To add a new timer for the measurement event, edit the :file:`src/app_task.cpp` 
            k_timer_stop(&sSensorTimer);
    }
 
-   int AppTask::Init()
+   CHIP_ERROR AppTask::Init()
    {
            /*
            ... Original content
@@ -335,7 +259,7 @@ To add a new timer for the measurement event, edit the :file:`src/app_task.cpp` 
 
            k_timer_init(&sSensorTimer, &SensorTimerHandler, nullptr);
            k_timer_user_data_set(&sSensorTimer, this);
-           return 0;
+           return CHIP_NO_ERROR;
    }
 
 The timer must be initialized in the ``Init()`` method of the ``AppTask`` class.
@@ -402,8 +326,8 @@ To implement the callback function, complete the following steps:
 1. Create a new file, for example :file:`src/zcl_callbacks.cpp`.
 2. Implement the callback in this file:
 
-   a. Open :file:`src/zap-generated/callback-stub.cpp` to check the list of customizable callback functions, marked with ``__attribute__((weak))``.
-   #. Read the description of :c:func:`MatterPostAttributeChangeCallback()`.
+   a. Open :file:`ncs/modules/lib/matter/src/app/util/generic-callback-stubs.cpp` to check the list of customizable callback functions, marked with ``__attribute__((weak))``.
+   #. Read the description of :c:func:`MatterPostAttributeChangeCallback()` in the :file:`ncs/modules/lib/matter/src/app/util/generic-callbacks.h` file.
    #. Implement :c:func:`MatterPostAttributeChangeCallback()` in the :file:`src/zcl_callbacks.cpp` file.
 
 For example, the implementation can look as follows:

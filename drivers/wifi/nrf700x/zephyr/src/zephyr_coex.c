@@ -19,10 +19,10 @@
 #include "zephyr_fmac_main.h"
 #include "fmac_api.h"
 
-LOG_MODULE_DECLARE(wifi_nrf, CONFIG_WIFI_LOG_LEVEL);
+LOG_MODULE_DECLARE(wifi_nrf, CONFIG_WIFI_NRF700X_LOG_LEVEL);
 
-extern struct wifi_nrf_drv_priv_zep rpu_drv_priv_zep;
-static struct wifi_nrf_ctx_zep *rpu_ctx = &rpu_drv_priv_zep.rpu_ctx_zep;
+extern struct nrf_wifi_drv_priv_zep rpu_drv_priv_zep;
+static struct nrf_wifi_ctx_zep *rpu_ctx = &rpu_drv_priv_zep.rpu_ctx_zep;
 
 #define CH_BASE_ADDRESS ABS_EXT_SYS_WLANSYSCOEX_CH_CONTROL
 #define COEX_CONFIG_FIXED_PARAMS 4
@@ -40,22 +40,25 @@ static struct wifi_nrf_ctx_zep *rpu_ctx = &rpu_drv_priv_zep.rpu_ctx_zep;
 /* copied from uccp530_77_registers.h of UCCP toolkit */
 #define ABS_PMB_WLAN_MAC_CTRL_PULSED_SOFTWARE_RESET 0xA5009A00UL
 
-#define NRF_RADIO_COEX_NODE DT_NODELABEL(nrf_radio_coex)
-static const struct gpio_dt_spec btrf_switch_spec =
+#if defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP)
+	#define NRF_RADIO_COEX_NODE DT_NODELABEL(nrf_radio_coex)
+	static const struct gpio_dt_spec btrf_switch_spec =
 	GPIO_DT_SPEC_GET(NRF_RADIO_COEX_NODE, btrf_switch_gpios);
+#endif
 
 /* PTA registers configuration of Coexistence Hardware */
 /* Separate antenna configuration, WLAN in 2.4GHz*/
 const uint16_t config_buffer_SEA[] = {
-	0x19, 0xF6, 0x8, 0x62, 0xF5,
-	0xF5, 0x19, 0x19, 0x74, 0x74,
-	0x8, 0x1E2, 0xD5, 0xD5, 0x1F6,
-	0x1F6, 0x61, 0x61, 0x1E2, 0x8,
-	0x1F6, 0x1F6, 0x19, 0x19, 0x1E2,
-	0x8, 0xF5, 0xF5, 0xD5, 0xD5,
-	0x8, 0x1E2, 0x51, 0x51, 0x74,
-	0x74, 0xF6, 0x19, 0x62, 0x19,
-	0xF6, 0x8, 0x62, 0x8, 0x1A
+	0x0019, 0x00F6, 0x0008, 0x0062, 0x00F5,
+	0x00F5, 0x0019, 0x0019, 0x0074, 0x0074,
+	0x0008, 0x01E2, 0x00D5, 0x00D5, 0x01F6,
+	0x01F6, 0x0061, 0x0061, 0x01E2, 0x0008,
+	0x0004, 0x0004, 0x0019, 0x0019, 0x0008,
+	0x0008, 0x00F5, 0x00F5, 0x00D5, 0x00D5,
+	0x0008, 0x01E2, 0x0051, 0x0051, 0x0074,
+	0x0074, 0x00F6, 0x0019, 0x0062, 0x0019,
+	0x00F6, 0x0008, 0x0062, 0x0008, 0x001A
 };
 
 /* Shared antenna configuration, WLAN in 2.4GHz */
@@ -64,7 +67,7 @@ const uint16_t config_buffer_SHA[] = {
 	0x00F5, 0x0019, 0x0019, 0x0004, 0x01F6,
 	0x0008, 0x01E2, 0x00F5, 0x00F5, 0x01F6,
 	0x01F6, 0x00E1, 0x00E1, 0x01E2, 0x0008,
-	0x01F6, 0x01F6, 0x0019, 0x0019, 0x01E2,
+	0x0004, 0x0004, 0x0019, 0x0019, 0x0008,
 	0x0008, 0x0015, 0x00F5, 0x00F5, 0x00F5,
 	0x0008, 0x01E2, 0x00E1, 0x00E1, 0x0004,
 	0x01F6, 0x00F6, 0x0019, 0x00E2, 0x0019,
@@ -103,7 +106,7 @@ const uint32_t ch_config_sep[] = {
 
 int nrf_wifi_coex_config_non_pta(bool separate_antennas)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct coex_ch_configuration params  = { 0 };
 	const uint32_t *config_buffer_ptr = NULL;
 	uint32_t start_offset = 0;
@@ -136,10 +139,10 @@ int nrf_wifi_coex_config_non_pta(bool separate_antennas)
 
 	cmd_len = (COEX_CONFIG_FIXED_PARAMS + num_reg_to_config) * sizeof(uint32_t);
 
-	status = wifi_nrf_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
+	status = nrf_wifi_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
 					   (void *)(&params), cmd_len);
 
-	if (status != WIFI_NRF_STATUS_SUCCESS) {
+	if (status != NRF_WIFI_STATUS_SUCCESS) {
 		return -1;
 	}
 
@@ -148,7 +151,7 @@ int nrf_wifi_coex_config_non_pta(bool separate_antennas)
 
 int nrf_wifi_coex_config_pta(enum nrf_wifi_pta_wlan_op_band wlan_band, bool separate_antennas)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct coex_ch_configuration params  = { 0 };
 	const uint16_t *config_buffer_ptr = NULL;
 	uint32_t start_offset = 0;
@@ -192,16 +195,18 @@ int nrf_wifi_coex_config_pta(enum nrf_wifi_pta_wlan_op_band wlan_band, bool sepa
 
 	cmd_len = (COEX_CONFIG_FIXED_PARAMS + num_reg_to_config) * sizeof(uint32_t);
 
-	status = wifi_nrf_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
+	status = nrf_wifi_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
 					   (void *)(&params), cmd_len);
 
-	if (status != WIFI_NRF_STATUS_SUCCESS) {
+	if (status != NRF_WIFI_STATUS_SUCCESS) {
 		return -1;
 	}
 
 	return 0;
 }
 
+#if defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP)
 int nrf_wifi_config_sr_switch(bool separate_antennas)
 {
 	int ret;
@@ -229,10 +234,11 @@ int nrf_wifi_config_sr_switch(bool separate_antennas)
 
 	return 0;
 }
+#endif
 
 int nrf_wifi_coex_hw_reset(void)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct coex_ch_configuration params  = { 0 };
 	uint32_t num_reg_to_config = 1;
 	uint32_t start_offset = 0;
@@ -252,10 +258,10 @@ int nrf_wifi_coex_hw_reset(void)
 
 	cmd_len = (COEX_CONFIG_FIXED_PARAMS + num_reg_to_config) * sizeof(uint32_t);
 
-	status = wifi_nrf_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
+	status = nrf_wifi_fmac_conf_btcoex(rpu_ctx->rpu_ctx,
 				(void *)(&params), cmd_len);
 
-	if (status != WIFI_NRF_STATUS_SUCCESS) {
+	if (status != NRF_WIFI_STATUS_SUCCESS) {
 		LOG_ERR("CH reset configuration failed\n");
 		return -1;
 	}

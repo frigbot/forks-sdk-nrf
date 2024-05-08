@@ -1,7 +1,7 @@
 .. _ug_matter_device_low_power_configuration:
 
-Reducing power consumption in Matter applications
-#################################################
+Reducing power consumption in Matter
+####################################
 
 .. contents::
    :local:
@@ -50,6 +50,14 @@ To configure the SED wake-up intervals, set both of the following Kconfig option
 * :kconfig:option:`CONFIG_CHIP_SED_IDLE_INTERVAL` to a value in milliseconds that determines how often the device wakes up to poll for data in the idle state (for example, ``1000``).
 * :kconfig:option:`CONFIG_CHIP_SED_ACTIVE_INTERVAL` to a value in milliseconds that determines how often the device wakes up to poll for data in the active state (for example, ``200``).
 
+You can also configure the SED active threshold to make the device stay active for some time after the network activity, instead of going to idle state immediately.
+The reason to use this functionality is to make the device wait for potentially delayed incoming traffic and avoid energy-wasting retransmissions.
+The higher the threshold value, the greater the communication reliability, but it also leads to higher power consumption.
+In practice, it is reasonable to set a non-zero threshold time only for devices using :kconfig:option:`CONFIG_CHIP_SED_IDLE_INTERVAL` value bigger than a few seconds.
+To configure the SED active threshold, set the following Kconfig option:
+
+* :kconfig:option:`CONFIG_CHIP_SED_ACTIVE_THRESHOLD` to a value in milliseconds that determines how long the device stays in the active mode after network activity.
+
 Synchronized Sleepy End Device (SSED) configuration in Matter
 -------------------------------------------------------------
 
@@ -66,6 +74,14 @@ To configure the SSED wake-up intervals, set both of the following Kconfig optio
 * :kconfig:option:`CONFIG_CHIP_SED_IDLE_INTERVAL` to a value in milliseconds that determines how often the device wakes up to listen for data in the idle state (for example, ``500``).
 * :kconfig:option:`CONFIG_CHIP_SED_ACTIVE_INTERVAL` to a value in milliseconds that determines how often the device wakes up to listen for data in the active state (for example, ``500``).
 
+You can also configure the SED active threshold to make the device stay active for some time after the network activity, instead of going to idle state immediately.
+The reason to use this functionality is to make the device wait for potentially delayed incoming traffic and avoid energy-wasting retransmissions.
+The higher the threshold value, the greater the communication reliability, but it also leads to higher power consumption.
+In practice, it is reasonable to set a non-zero threshold time only for devices using :kconfig:option:`CONFIG_CHIP_SED_IDLE_INTERVAL` value bigger than a few seconds.
+To configure the SED active threshold, set the following Kconfig option:
+
+* :kconfig:option:`CONFIG_CHIP_SED_ACTIVE_THRESHOLD` to a value in milliseconds that determines how long the device stays in the active mode after network activity.
+
 Matter over Wi-Fi
 =================
 
@@ -75,6 +91,45 @@ The message is sent in a predefined subset of the beacons, so the STA device nee
 For more information about the Wi-Fi power save mechanism, see the :ref:`Wi-Fi MAC layer <wifi_mac_layer>` documentation.
 
 To enable the Wi-Fi power save mode, set the :kconfig:option:`CONFIG_NRF_WIFI_LOW_POWER` Kconfig option to ``y``.
+
+Optimize subscription report intervals
+**************************************
+
+The majority of Matter controllers establishes :ref:`subscriptions <ug_matter_overview_int_model>` to some attributes of the Matter accessory in order to receive periodic data reports.
+The node that initiates subscription (subscriber) recommends using data report interval within the requested min-max range.
+The node that receives the subscription request (publisher) may accept or modify the maximum interval value.
+
+The default implementation assumes that the publisher node accepts the requested intervals, which may result in sending data reports very often and consuming significant amounts of power.
+You can use one of the following ways to modify this behavior and select the optimal timings for your specific use case:
+
+* Enable the nRF platform's implementation of the subscription request handling and specify the preferred data report interval value.
+  The implementation looks at the value requested by the initiator and the value preferred by the publisher and selects the higher of the two.
+  To enable it, complete the following steps:
+
+  1. Set the :kconfig:option:`CONFIG_CHIP_ICD_SUBSCRIPTION_HANDLING` Kconfig option to ``y``.
+  2. Set the :kconfig:option:`CONFIG_CHIP_MAX_PREFERRED_SUBSCRIPTION_REPORT_INTERVAL` Kconfig option to the preferred value of the maximum data report interval in seconds.
+
+* Provide your own policy and implementation of the subscription request handling.
+  To do this, implement the ``OnSubscriptionRequested`` method in your application to set values of subscription report intervals that are appropriate for your use case.
+  See the following code snippet for an example of how this implementation could look:
+
+  .. code-block::
+
+     #include <app/ReadHandler.h>
+
+     class SubscriptionApplicationCallback : public chip::app::ReadHandler::ApplicationCallback
+     {
+        CHIP_ERROR OnSubscriptionRequested(chip::app::ReadHandler & aReadHandler,
+                                           chip::Transport::SecureSession & aSecureSession) override;
+     };
+
+     CHIP_ERROR SubscriptionApplicationCallback::OnSubscriptionRequested(chip::app::ReadHandler & aReadHandler,
+                                                          chip::Transport::SecureSession & aSecureSession)
+     {
+        /* Set the interval in seconds appropriate for your application use case, e.g. 15 seconds. */
+        uint32_t exampleMaxInterval = 15;
+        return aReadHandler.SetReportingIntervals(exampleMaxInterval);
+     }
 
 Disable serial logging
 **********************
@@ -97,28 +152,18 @@ To disable the serial logging and the UART peripheral, complete the following st
 Disable unused pins and peripherals
 ***********************************
 
-Some of the pins and peripherals are enabled by default for some boards.
-Depending on the peripheral or the pin type, they can increase the device power consumption to a different extent.
-If the application does not use them, make sure they are disabled.
-
-To disable a particular peripheral, set its state in the board's :file:`dts` overlay to ``disabled``.
-For example, for **ADC**:
-
-.. code-block:: devicetree
-
-    &adc {
-        status = "disabled";
-    };
+.. include:: /test_and_optimize/optimizing/power_general.rst
+   :start-after: disable_unused_pins_start
+   :end-before: disable_unused_pins_end
 
 .. _ug_matter_enable_pm_module:
 
 Enable Device Power Management module
 *************************************
 
-The Device Power Management module provides an interface that the device drivers use to be informed about entering the suspend state or resuming from the suspend state.
-This allows the device drivers to do any necessary power management operations, such as turning off device clocks and peripherals, which lowers the power consumption.
-
-To enable suspending peripherals when CPU goes to sleep, set the :kconfig:option:`CONFIG_PM_DEVICE` Kconfig option to ``y``.
+.. include:: /test_and_optimize/optimizing/power_general.rst
+   :start-after: enable_device_pm_start
+   :end-before: enable_device_pm_end
 
 Put the external flash into sleep mode in inactivity periods
 ************************************************************
@@ -150,8 +195,8 @@ For example, to control the QSPI NOR external flash, you can use the following i
 Configure radio transmitter power
 *********************************
 
-The radio transmitter power (radio TX power) has a significant impact on the device power consumption.
-The higher the transmitting power, the greater the wireless communication range, which leads to higher power consumption.
-Make sure to choose the optimal configuration for your specific use case.
+.. include:: /test_and_optimize/optimizing/power_general.rst
+   :start-after: radio_power_start
+   :end-before: radio_power_end
 
 See :ref:`ug_matter_gs_transmission_power` for more information.

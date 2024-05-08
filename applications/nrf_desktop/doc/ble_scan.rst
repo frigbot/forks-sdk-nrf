@@ -98,6 +98,8 @@ Apart from that the following default values are applied:
   The dongle scans for all of the bonded peripherals.
 * :kconfig:option:`CONFIG_BT_SCAN_CONN_ATTEMPTS_FILTER` is enabled.
 
+.. _nrf_desktop_ble_scan_scanning_not_started:
+
 Scanning not started
 ====================
 
@@ -106,7 +108,7 @@ The scanning will not start if one of the following conditions occurs:
 * There are no more free Bluetooth connections.
 * The :ref:`nrf_desktop_ble_discovery` is in the process of discovering a peer.
 * The central is going to scan only for bonded peers and all the bonded peers are already connected.
-* The central is in the power down mode and :kconfig:option:`CONFIG_DESKTOP_BLE_SCAN_PM_EVENTS` is enabled.
+* The central is in the power down mode and :ref:`CONFIG_DESKTOP_BLE_SCAN_PM_EVENTS <config_desktop_app_options>` is enabled.
 
 The number of Bluetooth connections is defined as the :kconfig:option:`CONFIG_BT_MAX_CONN` Kconfig option.
 
@@ -120,7 +122,27 @@ The scanning is interrupted if one of the following conditions occurs:
 * The maximum scan duration specified by :ref:`CONFIG_DESKTOP_BLE_SCAN_DURATION_S <config_desktop_app_options>` times out.
 
 The scanning is never interrupted if there is no connected Bluetooth peer.
-If :kconfig:option:`CONFIG_DESKTOP_BLE_SCAN_PM_EVENTS` is enabled, the power down event will also interrupt scanning.
+If :ref:`CONFIG_DESKTOP_BLE_SCAN_PM_EVENTS <config_desktop_app_options>` is enabled, the power down event will also interrupt scanning.
+
+Forced scan
+-----------
+
+The module supports a dedicated forced scan state that prevents interrupting scanning when a connected peripheral is in use.
+The forced scan speeds up establishing new connections with peripherals, but it also negatively impacts the performance of already connected peripherals.
+If the :ref:`CONFIG_DESKTOP_BLE_FORCED_SCAN_DURATION_S <config_desktop_app_options>` Kconfig option is set to a value greater than zero, the module enters the forced scan state after one of the following conditions is met:
+
+* Boot or wakeup
+* Successful peripheral discovery
+* Peripheral disconnection
+* Connection failure
+* Bond erase
+* Scan request
+
+After the duration that is specified in the :ref:`CONFIG_DESKTOP_BLE_FORCED_SCAN_DURATION_S <config_desktop_app_options>` Kconfig option, the module switches to regular scanning.
+The regular scanning can be interrupted by using connected peripherals and times out after the scan duration specified by :ref:`CONFIG_DESKTOP_BLE_SCAN_DURATION_S <config_desktop_app_options>` if there are peripherals connected over Bluetooth.
+
+.. note::
+  The conditions described under :ref:`nrf_desktop_ble_scan_scanning_not_started` prevent the starting of the forced scan.
 
 Implementation details
 **********************
@@ -139,7 +161,7 @@ Bluetooth connection interval
 
 After the scan filter match, the following happens:
 
-a. The scanning is stopped and the |NCS|'s :ref:`nrf_bt_scan_readme` automatically establishes the Bluetooth connection with the peripheral.
+1. The scanning is stopped and the |NCS|'s :ref:`nrf_bt_scan_readme` automatically establishes the Bluetooth connection with the peripheral.
    The initial Bluetooth connection interval is set by default to 7.5 ms, that is to the shortest connection interval allowed by the Bluetooth specification.
 #. The peer discovery is started.
 #. After the :ref:`nrf_desktop_ble_discovery` completes the peer discovery, the :ref:`nrf_desktop_ble_conn_params` receives the ``ble_discovery_complete_event`` and updates the Bluetooth connection interval.

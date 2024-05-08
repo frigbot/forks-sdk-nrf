@@ -16,8 +16,6 @@
 #include <stdlib.h>
 #include <zephyr/drivers/gpio.h>
 
-#define SLEEP_TIME_MS 10
-
 enum {
 	SYSBUS = 0,
 	EXT_SYS_BUS,
@@ -39,24 +37,24 @@ extern uint32_t rpu_7002_memmap[][3];
 int rpu_read(unsigned int addr, void *data, int len);
 int rpu_write(unsigned int addr, const void *data, int len);
 
-int rpu_gpio_config(void);
-int rpu_pwron(void);
-int  rpu_qspi_init(void);
 int rpu_sleep(void);
 int rpu_wakeup(void);
 int rpu_sleep_status(void);
 void rpu_get_sleep_stats(uint32_t addr, uint32_t *buff, uint32_t wrd_len);
 int rpu_irq_config(struct gpio_callback *irq_callback_data, void (*irq_handler)());
+int rpu_irq_remove(struct gpio_callback *irq_callback_data);
 
 int rpu_wrsr2(uint8_t data);
 int rpu_rdsr2(void);
 int rpu_rdsr1(void);
 int rpu_clks_on(void);
 
+int rpu_init(void);
 int rpu_enable(void);
 int rpu_disable(void);
 
-#ifdef CONFIG_BOARD_NRF7002DK_NRF5340
+#if defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP)
 int ble_ant_switch(unsigned int ant_switch);
-#endif /* CONFIG_BOARD_NRF7002DK_NRF5340 */
+#endif /* CONFIG_BOARD_NRF700XDK_NRF5340 */
 #endif /* __RPU_HW_IF_H_ */

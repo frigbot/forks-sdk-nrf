@@ -7,6 +7,7 @@
 #include "app_task.h"
 
 #include "app_config.h"
+#include "fabric_table_delegate.h"
 #include "led_util.h"
 #include "light_switch.h"
 
@@ -33,11 +34,15 @@
 #include "ota_util.h"
 #endif
 
-#include <dk_buttons_and_leds.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/kernel.h>
+#ifdef CONFIG_CHIP_ICD_SUBSCRIPTION_HANDLING
+#include <app/InteractionModelEngine.h>
+#endif
 
-LOG_MODULE_DECLARE(app, CONFIG_MATTER_LOG_LEVEL);
+#include <dk_buttons_and_leds.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_DECLARE(app, CONFIG_CHIP_APP_LOG_LEVEL);
 
 using namespace ::chip;
 using namespace ::chip::app;
@@ -166,7 +171,12 @@ CHIP_ERROR AppTask::Init()
 	k_timer_user_data_set(&sDimmerPressKeyTimer, this);
 	k_timer_user_data_set(&sFunctionTimer, this);
 
-#ifdef CONFIG_MCUMGR_SMP_BT
+#ifdef CONFIG_CHIP_OTA_REQUESTOR
+	/* OTA image confirmation must be done before the factory data init. */
+	OtaConfirmNewImage();
+#endif
+
+#ifdef CONFIG_MCUMGR_TRANSPORT_BT
 	/* Initialize DFU over SMP */
 	GetDFUOverSMP().Init();
 	GetDFUOverSMP().ConfirmNewImage();
@@ -179,6 +189,7 @@ CHIP_ERROR AppTask::Init()
 	SetDeviceAttestationCredentialsProvider(&mFactoryDataProvider);
 	SetCommissionableDataProvider(&mFactoryDataProvider);
 #else
+	SetDeviceInstanceInfoProvider(&DeviceInstanceInfoProviderMgrImpl());
 	SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
 #endif
 
@@ -188,6 +199,11 @@ CHIP_ERROR AppTask::Init()
 	ReturnErrorOnFailure(chip::Server::GetInstance().Init(initParams));
 	ConfigurationMgr().LogDeviceConfig();
 	PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kBLE));
+	AppFabricTableDelegate::Init();
+
+#ifdef CONFIG_CHIP_ICD_SUBSCRIPTION_HANDLING
+	chip::app::InteractionModelEngine::GetInstance()->RegisterReadHandlerAppCallback(&GetICDUtil());
+#endif
 
 	/*
 	 * Add CHIP event handler and start CHIP thread.
@@ -255,7 +271,7 @@ void AppTask::ButtonReleaseHandler(const AppEvent &event)
 				Instance().CancelTimer(Timer::Function);
 				Instance().mFunction = FunctionEvent::NoneSelected;
 
-#ifdef CONFIG_MCUMGR_SMP_BT
+#ifdef CONFIG_MCUMGR_TRANSPORT_BT
 				GetDFUOverSMP().StartServer();
 				UpdateStatusLED();
 #else
@@ -398,7 +414,7 @@ void AppTask::ChipEventHandler(const ChipDeviceEvent *event, intptr_t /* arg */)
 		UpdateStatusLED();
 		break;
 #if defined(CONFIG_NET_L2_OPENTHREAD)
-	case DeviceEventType::kDnssdPlatformInitialized:
+	case DeviceEventType::kDnssdInitialized:
 #if CONFIG_CHIP_OTA_REQUESTOR
 		InitBasicOTARequestor();
 #endif /* CONFIG_CHIP_OTA_REQUESTOR */

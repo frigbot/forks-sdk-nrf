@@ -7,7 +7,7 @@ FICR programming subcommands
    :local:
    :depth: 2
 
-``wifi_radio_ficr_prog`` is the Wi-Fi radio FICR programming command and it supports the following subcommands.
+``wifi_radio_ficr_prog`` is the Wi-Fi® radio FICR programming command and it supports the following subcommands.
 
 .. _wifi_radio_ficr_prog_subcmds:
 
@@ -33,6 +33,16 @@ Wi-Fi radio FICR subcommands
      - N/A
      - N/A
      - Reads out all the OTP parameters (excluding QSPI_KEY which cannot be read).
+   * - otp_read_retrim_version
+     - PRODRETEST.PROGVERSION
+     - N/A
+     - N/A
+     - Reads out program version of Retrim parameters.
+   * - otp_read_retrim_params
+     - PRODRETEST.TRIM[n]
+     - N/A
+     - N/A
+     - Reads out all the Retrim parameters.
    * - otp_write_params
      - REGION_PROTECT
      - 0x100
@@ -63,21 +73,6 @@ Wi-Fi radio FICR subcommands
      - arg
      - arg is 7-bit unsigned XO value. Bits [31:7] unused. Adjusts capacitor bank, 0 : Lowest capacitance (Highest frequency), 127 : Highest capacitance (Lowest frequency).
    * - otp_write_params
-     - CALIB_PWR2G
-     - 0x13C
-     - arg
-     - arg is 32-bit value specifying maximum output power for DSSS, MCS0, MCS7 (DSSS in bits[7:0] - unsigned). Measured in channel 7. Bits [31:24] unused.
-   * - otp_write_params
-     - CALIB_PWR5GM7
-     - 0x140
-     - arg
-     - arg is 32-bit value specifying maximum output power for MCS7 in channel 36, 100, 165 (channel 36 in bits[7:0] - unsigned). Bits [31:24] unused.
-   * - otp_write_params
-     - CALIB_PWR5GM0
-     - 0x144
-     - arg
-     - arg is 32-bit value specifying maximum output power for MCS0 in channel 36, 100, 165 (channel 36 in bits[7:0] - unsigned). Bits [31:24] unused.
-   * - otp_write_params
      - REGION_DEFAULTS
      - 0x154
      - arg
@@ -90,10 +85,20 @@ Wi-Fi radio FICR subcommands
        | bit 3  : CALIB_XO
        | bit 4  : Reserved
        | bit 5  : Reserved
-       | bit 6  : CALIB_PWR2G
-       | bit 7  : CALIB_PWR5GM7
-       | bit 8  : CALIB_PWR5GM0
+       | bit 6  : Reserved
+       | bit 7  : Reserved
+       | bit 8  : Reserved
        | bit 9  : Reserved
        | bit 10 : Reserved
        | bit 11 : Reserved
        | bit 12-31 : Reserved
+   * - otp_write_retrim_version
+     - PRODRETEST.PROGVERSION
+     - N/A
+     - arg
+     - arg is 32-bit data.
+   * - otp_write_retrim_params
+     - PRODRETEST.TRIM[n]
+     - index between (0-14)
+     - arg
+     - arg is 32-bit data. When index = 5, PRODRETEST.TRIM[5] is written with 32-bit argument.

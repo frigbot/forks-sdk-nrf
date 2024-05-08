@@ -117,10 +117,11 @@ Firmware update
 
 This sample supports firmware update of both the application and TF-M, and the second stage bootloader.
 
-The firmware update process requires signature verification keys in order to sign the images used in the firmware update process.
+The firmware update process requires signature verification keys in order to sign the images used in the process.
 The nRF Secure Immutable bootloader and MCUboot will use signing keys that should not be used in production.
+For signing and verifying images, use ECDSA with secp256r1-sha256, which is supported by the |NCS| cryptographic libraries :ref:`nrf_oberon_readme` and :ref:`crypto_api_nrf_cc310_bl`.
 
-Example on how to generate and use keys:
+Below is an example of how to generate and use the keys.
 
 Generate security keys if needed:
 
@@ -129,7 +130,7 @@ Generate security keys if needed:
     python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k /home/user/ncs/_keys/mcuboot_priv.pem
     python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k /home/user/ncs/_keys/nsib_priv.pem
 
-Update the ``child_image/mcuboot/prj.conf`` file to set the private signing key for MCUBoot:
+Update the :file:`child_image/mcuboot/prj.conf` file to set the private signing key for MCUboot:
 
 .. code-block:: console
 
@@ -152,7 +153,7 @@ Application and TF-M firmware update
 ====================================
 
 Use firmware update to update the application and TF-M firmware.
-For the image to be updatable, the firmware image version :kconfig:option:`CONFIG_MCUBOOT_IMAGE_VERSION` has to be updated to a higher version.
+For the image to be updatable, the firmware image version :kconfig:option:`CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION` has to be updated to a higher version.
 See :ref:`ug_fw_update_image_versions_mcuboot_downgrade` for information on downgrade protection in MCUboot.
 
 To upload a new application image, build an application with an updated image version.
@@ -160,7 +161,7 @@ To upload a new application image, build an application with an updated image ve
 .. code-block:: console
 
     west build -b nrf5340dk_nrf5340_cpuapp_ns nrf/samples/tfm/tfm_psa_template -d build_update \
-    -DCONFIG_MCUBOOT_IMAGE_VERSION=\"1.2.3\"
+    -DCONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"1.2.3\"
 
 Then upload the new application image to the device.
 
@@ -191,6 +192,8 @@ Bootloader firmware update
 To upload a new bootloader image, build a bootloader targeting the correct bootloader slot with an updated firmware image version.
 The bootloader is placed in slot 0 by default, so enable building of the slot 1 bootloader.
 
+.. code-block:: console
+
     west build -b nrf5340dk_nrf5340_cpuapp_ns nrf/samples/tfm/tfm_psa_template \
     -DCONFIG_BUILD_S1_VARIANT=y \
     -Dmcuboot_CONFIG_FW_INFO_FIRMWARE_VERSION=2
@@ -218,14 +221,8 @@ The verification of the image will happen during the update process.
 
     mcumgr --conntype serial --connstring dev=/dev/ttyACM2,baud=115200,mtu=512 reset
 
-
 Dependencies
 *************
 
-This sample uses the TF-M module that can be found in the following location in the |NCS| folder structure:
-
-* ``modules/tee/tfm/``
-
-This sample uses the following libraries:
-
-* :ref:`lib_tfm_ioctl_api`
+* This sample uses the TF-M module found in the :file:`modules/tee/tfm/` folder of the |NCS|.
+* This sample uses the :ref:`lib_tfm_ioctl_api` library.

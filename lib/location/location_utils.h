@@ -9,41 +9,16 @@
 
 #include <modem/location.h>
 
-/** Modem parameters. */
-struct location_utils_modem_params_info {
-	/** Mobile Country Code. */
-	int mcc;
-
-	/** Mobile Network Code. */
-	int mnc;
-
-	/** E-UTRAN cell ID */
-	uint32_t cell_id;
-
-	/** Tracking area code. */
-	uint32_t tac;
-
-	/** Physical cell ID. */
-	uint16_t phys_cell_id;
-};
-
 /**
- * @brief Check if default PDN context is active.
+ * @brief Check if LTE networking is available.
  *
- * @retval true      If default PDN context is active.
- * @retval false     If default PDN context is not active.
+ * Checks for an active default PDN bearer, but does not check cell registration status,
+ * so may give false positive, but not false negative.
+ *
+ * @retval true      LTE networking is available.
+ * @retval false     LTE networking is not available.
  */
-bool location_utils_is_default_pdn_active(void);
-
-/**
- * @brief Read modem parameters.
- *
- * @param[out] modem_params Context where parameters are filled.
- *
- * @retval true      If modem parameters were received successfully.
- * @retval false     If modem parameters were not received successfully.
- */
-int location_utils_modem_params_read(struct location_utils_modem_params_info *modem_params);
+bool location_utils_is_lte_available(void);
 
 /**
  * @brief Generate JWT buffer to be used for nRF Cloud REST API use.

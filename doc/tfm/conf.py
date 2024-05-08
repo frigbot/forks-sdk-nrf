@@ -1,3 +1,9 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
 # TFM documentation build configuration file
 
 from pathlib import Path
@@ -19,7 +25,7 @@ ZEPHYR_BASE = utils.get_projdir("zephyr")
 project = "Trusted Firmware-M"
 copyright = "2017-2021, ARM CE-OSS"
 author = "ARM CE-OSS"
-version = "1.6.0"
+version = "1.8.0"
 
 sys.path.insert(0, str(ZEPHYR_BASE / "doc" / "_extensions"))
 sys.path.insert(0, str(NRF_BASE / "doc" / "_extensions"))
@@ -29,7 +35,6 @@ extensions = [
     "sphinx.ext.autosectionlabel",
     "sphinxcontrib.plantuml",
     "sphinx_tabs.tabs",
-    "ncs_cache",
     "zephyr.external_content",
 ]
 source_suffix = [".rst", ".md"]
@@ -49,8 +54,13 @@ html_last_updated_fmt = None
 html_show_sourcelink = True
 html_show_sphinx = False
 html_show_copyright = False
+html_title = "Trusted Firmware-M documentation (nRF Connect SDK)"
 
-html_theme_options = {"docset": "tfm", "docsets": utils.ALL_DOCSETS}
+html_theme_options = {
+    "docset": "tfm",
+    "docsets": utils.ALL_DOCSETS,
+    "subtitle": "nRF Connect SDK",
+}
 
 # Options for autosectionlabel -------------------------------------------------
 
@@ -65,16 +75,10 @@ external_content_contents = [
     (TFM_BASE, "tools/**/*"),
 ]
 
-# Options for ncs_cache --------------------------------------------------------
-
-ncs_cache_docset = "tfm"
-ncs_cache_build_dir = utils.get_builddir()
-ncs_cache_config = NRF_BASE / "doc" / "cache.yml"
-ncs_cache_manifest = NRF_BASE / "west.yml"
-
 
 def setup(app):
     app.add_css_file("css/common.css")
     app.add_css_file("css/tfm.css")
 
-    utils.add_google_analytics(app)
+    utils.add_google_analytics(app, html_theme_options)
+    utils.add_announcement_banner(html_theme_options)

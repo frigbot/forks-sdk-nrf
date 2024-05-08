@@ -75,20 +75,25 @@ static bool get_first_down_section(struct bank_section *out)
 
 /* ===== Test cases ===== */
 
-static void test_heap_resize(void)
+/*
+ * Use a global extern pointer to hold the allocated buffer to prevent the
+ * compiler from optimizing away malloc()/free().
+ */
+void *allocated_buffer;
+
+ZTEST(ram_pwrdn, test_heap_resize)
 {
 	const size_t buffer_size = 20480; // 20KiB
 
 	struct bank_section limit;
 	struct bank_section limit_saved;
-	void *buffer;
 
 	/* Save the current limit between powered up and down RAM areas */
 	zassert_true(get_first_down_section(&limit_saved), "Enabled RAM limit not found");
 
 	/* Allocate some memory and verify that the limit has moved forward */
-	buffer = malloc(buffer_size);
-	memset(buffer, 0, buffer_size);
+	allocated_buffer = malloc(buffer_size);
+	memset(allocated_buffer, 0, buffer_size);
 
 	zassert_true(get_first_down_section(&limit), "Enabled RAM limit not found after malloc");
 	zassert_true(limit.bank_id > limit_saved.bank_id || (limit.bank_id == limit_saved.bank_id &&
@@ -96,7 +101,7 @@ static void test_heap_resize(void)
 		     "Enabled RAM limit not moved forward after malloc");
 
 	/* Trim memory and verify that the limit has moved backward */
-	free(buffer);
+	free(allocated_buffer);
 	malloc_trim(0);
 	limit_saved.bank_id = limit.bank_id;
 	limit_saved.sect_id = limit.sect_id;
@@ -107,7 +112,7 @@ static void test_heap_resize(void)
 		     "Enabled RAM limit not moved backward after malloc");
 }
 
-static void test_manual_power_control(void)
+ZTEST(ram_pwrdn, test_manual_power_control)
 {
 	const uintptr_t RAM_START_ADDR = 0x20000000UL;
 	const uintptr_t RAM_END_ADDR = 0x20040000UL;
@@ -173,9 +178,4 @@ static void test_manual_power_control(void)
 		     "Disabling sections on two banks (disabled too much)");
 }
 
-void test_main(void)
-{
-	ztest_test_suite(test_ram_pwrdn, ztest_unit_test(test_heap_resize),
-			 ztest_unit_test(test_manual_power_control));
-	ztest_run_test_suite(test_ram_pwrdn);
-}
+ZTEST_SUITE(ram_pwrdn, NULL, NULL, NULL, NULL, NULL);

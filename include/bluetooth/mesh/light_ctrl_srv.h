@@ -79,7 +79,7 @@ struct bt_mesh_light_ctrl_srv;
 
 /** @def BT_MESH_MODEL_LIGHT_CTRL_SRV
  *
- *  @brief Light Lightness model entry.
+ *  @brief Light Lightness Control Server model composition data entry.
  *
  *  @param[in] _srv Pointer to a @ref bt_mesh_light_ctrl_srv instance.
  */
@@ -99,11 +99,18 @@ struct bt_mesh_light_ctrl_srv;
 
 /** Light Lightness Control Server state */
 enum bt_mesh_light_ctrl_srv_state {
-	/** Standby state */
+	/** Standby state, merges the Light LC State Machine states of OFF,
+	 * STANDBY, FADE_STANDBY_AUTO and FADE_STANDBY_MANUAL in the Mesh Model
+	 * Specification section 6.2.5.
+	 */
 	LIGHT_CTRL_STATE_STANDBY,
-	/** On state */
+	/** On state, merges the Light LC State Machine states of FADE_ON and
+	 * RUN in the Mesh Model Specification section 6.2.5.
+	 */
 	LIGHT_CTRL_STATE_ON,
-	/** Prolong state */
+	/** Prolong state, merges the Light LC State Machine states of FADE and
+	 * PROLONG in the Mesh Model Specification section 6.2.5.
+	 */
 	LIGHT_CTRL_STATE_PROLONG,
 
 	/** The number of states. */
@@ -155,10 +162,6 @@ struct bt_mesh_light_ctrl_srv {
 	/** State timer */
 	struct k_work_delayable timer;
 
-#if CONFIG_BT_SETTINGS
-	/** Storage timer */
-	struct k_work_delayable store_timer;
-#endif
 	/** Timer for delayed action */
 	struct k_work_delayable action_delay;
 	/** Configuration parameters */
@@ -172,6 +175,10 @@ struct bt_mesh_light_ctrl_srv {
 		BT_MESH_LIGHT_CTRL_OP_LIGHT_ONOFF_STATUS, 3)];
 	/** Resume control timeout (in seconds) */
 	uint16_t resume;
+#if CONFIG_BT_MESH_LIGHT_CTRL_AMB_LIGHT_LEVEL_TIMEOUT
+	/* Time when the last ambient light level report was received. */
+	int64_t amb_light_level_timestamp;
+#endif
 	/** Setup model publish parameters */
 	struct bt_mesh_model_pub setup_pub;
 	/* Publication buffer */
@@ -186,7 +193,7 @@ struct bt_mesh_light_ctrl_srv {
 	struct bt_mesh_light_ctrl_reg *reg;
 	/** Previous regulator value */
 	uint16_t reg_prev;
-#endif
+#endif /* CONFIG_BT_MESH_LIGHT_CTRL_SRV_REG */
 	/** Lightness server instance */
 	struct bt_mesh_lightness_srv *lightness;
 	/** Extended Generic OnOff server */

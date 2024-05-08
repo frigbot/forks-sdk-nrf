@@ -7,19 +7,21 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <lwm2m_carrier.h>
+#include <modem/nrf_modem_lib.h>
+#include <nrf_modem.h>
+#include <nrf_errno.h>
 
 #define LWM2M_CARRIER_THREAD_STACK_SIZE 4096
 #define LWM2M_CARRIER_THREAD_PRIORITY K_LOWEST_APPLICATION_THREAD_PRIO
 
+NRF_MODEM_LIB_ON_INIT(lwm2m_carrier_init_hook, on_modem_lib_init, NULL);
+NRF_MODEM_LIB_ON_SHUTDOWN(lwm2m_carrier_shutdown_hook, on_modem_lib_shutdown, NULL);
+NRF_MODEM_LIB_ON_DFU_RES(lwm2m_carrier_dfu_hook, on_modem_lib_dfu, NULL);
+
+static int nrf_modem_dfu_result;
 
 #if defined(CONFIG_LTE_LINK_CONTROL)
 #include <modem/lte_lc.h>
-
-static void lte_event_handler(const struct lte_lc_evt *const evt)
-{
-	/* This event handler is not in use here. */
-	ARG_UNUSED(evt);
-}
 
 __weak int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *event)
 {
@@ -29,10 +31,6 @@ __weak int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *event)
 	 * The application may replace this handler to have better control of the LTE link.
 	 */
 	switch (event->type) {
-	case LWM2M_CARRIER_EVENT_INIT:
-		err = lte_lc_init();
-		lte_lc_register_handler(lte_event_handler);
-		break;
 	case LWM2M_CARRIER_EVENT_LTE_LINK_UP:
 		err = lte_lc_connect_async(NULL);
 		break;
@@ -41,6 +39,12 @@ __weak int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *event)
 		break;
 	case LWM2M_CARRIER_EVENT_LTE_POWER_OFF:
 		err = lte_lc_power_off();
+		break;
+	case LWM2M_CARRIER_EVENT_MODEM_INIT:
+		err = nrf_modem_lib_init();
+		break;
+	case LWM2M_CARRIER_EVENT_MODEM_SHUTDOWN:
+		err = nrf_modem_lib_shutdown();
 		break;
 	default:
 		break;
@@ -77,6 +81,12 @@ __weak int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *event)
 			printk("Failed to set the modem to powered off functional mode\n");
 		}
 		break;
+	case LWM2M_CARRIER_EVENT_MODEM_INIT:
+		err = nrf_modem_lib_init();
+		break;
+	case LWM2M_CARRIER_EVENT_MODEM_SHUTDOWN:
+		err = nrf_modem_lib_shutdown();
+		break;
 	default:
 		break;
 	}
@@ -84,6 +94,64 @@ __weak int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *event)
 	return 0;
 }
 #endif
+
+static void on_modem_lib_dfu(int32_t dfu_res, void *ctx)
+{
+	ARG_UNUSED(ctx);
+
+	switch (dfu_res) {
+	case NRF_MODEM_DFU_RESULT_OK:
+		printk("Modem firmware update successful.\n");
+		printk("Modem is running the new firmware.\n");
+		nrf_modem_dfu_result = LWM2M_CARRIER_MODEM_INIT_UPDATED;
+		break;
+	case NRF_MODEM_DFU_RESULT_HARDWARE_ERROR:
+	case NRF_MODEM_DFU_RESULT_INTERNAL_ERROR:
+		printk("Modem firmware update failed.\n");
+		printk("Fatal error.\n");
+		nrf_modem_dfu_result = LWM2M_CARRIER_MODEM_INIT_UPDATE_FAILED;
+		break;
+	case NRF_MODEM_DFU_RESULT_UUID_ERROR:
+	case NRF_MODEM_DFU_RESULT_AUTH_ERROR:
+	default:
+		printk("Modem firmware update failed.\n");
+		printk("Modem is running non-updated firmware.\n");
+		nrf_modem_dfu_result = LWM2M_CARRIER_MODEM_INIT_UPDATE_FAILED;
+		break;
+	}
+}
+
+static void on_modem_lib_init(int ret, void *ctx)
+{
+	ARG_UNUSED(ctx);
+
+	int result;
+
+	if (nrf_modem_dfu_result) {
+		result = nrf_modem_dfu_result;
+	} else if (ret == -NRF_EPERM) {
+		printk("Modem already initialized\n");
+		return;
+	} else if (ret == 0) {
+		result = LWM2M_CARRIER_MODEM_INIT_SUCCESS;
+	} else {
+		printk("Could not initialize modem library.\n");
+		printk("Fatal error.\n");
+		result = -EIO;
+	}
+
+	/* Reset for a normal init without DFU. */
+	nrf_modem_dfu_result = 0;
+
+	lwm2m_carrier_on_modem_init(result);
+}
+
+static void on_modem_lib_shutdown(void *ctx)
+{
+	ARG_UNUSED(ctx);
+
+	lwm2m_carrier_on_modem_shutdown();
+}
 
 __weak int lwm2m_carrier_custom_init(lwm2m_carrier_config_t *config)
 {
@@ -96,12 +164,6 @@ __weak int lwm2m_carrier_custom_init(lwm2m_carrier_config_t *config)
 void lwm2m_carrier_thread_run(void)
 {
 	int err;
-
-	err = lwm2m_carrier_init();
-	if (err != 0) {
-		printk("Failed to initialize the LwM2M carrier library. Error %d\n", err);
-		return;
-	}
 
 	lwm2m_carrier_config_t config = {0};
 
@@ -123,6 +185,10 @@ void lwm2m_carrier_thread_run(void)
 
 #ifdef CONFIG_LWM2M_CARRIER_T_MOBILE
 	config.carriers_enabled |= LWM2M_CARRIER_T_MOBILE;
+#endif
+
+#ifdef CONFIG_LWM2M_CARRIER_SOFTBANK
+	config.carriers_enabled |= LWM2M_CARRIER_SOFTBANK;
 #endif
 
 #ifndef CONFIG_LWM2M_CARRIER_BOOTSTRAP_SMARTCARD
@@ -175,7 +241,7 @@ void lwm2m_carrier_thread_run(void)
 	 * Note: can also pass NULL to initialize with default settings
 	 * (no certification mode or additional settings required by operator)
 	 */
-	err = lwm2m_carrier_run(&config);
+	err = lwm2m_carrier_main(&config);
 	if (err != 0) {
 		printk("Failed to run the LwM2M carrier library. Error %d\n", err);
 	}

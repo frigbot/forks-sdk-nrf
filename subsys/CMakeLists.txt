@@ -8,10 +8,20 @@ add_subdirectory_ifdef(CONFIG_BT bluetooth)
 
 add_subdirectory_ifdef(CONFIG_BOOTLOADER_MCUBOOT bootloader/bl_override)
 add_subdirectory_ifdef(CONFIG_IS_SECURE_BOOTLOADER bootloader)
-add_subdirectory_ifdef(CONFIG_SECURE_BOOT bootloader/image)
+if(NOT (SYSBUILD OR NCS_SYSBUILD_PARTITION_MANAGER))
+  add_subdirectory_ifdef(CONFIG_SECURE_BOOT bootloader/image)
+endif()
 add_subdirectory_ifdef(CONFIG_SECURE_BOOT_CRYPTO bootloader/bl_crypto)
 add_subdirectory_ifdef(CONFIG_SECURE_BOOT_VALIDATION bootloader/bl_validation)
 add_subdirectory_ifdef(CONFIG_SECURE_BOOT_STORAGE bootloader/bl_storage)
+
+if(NOT SYSBUILD)
+  if(CONFIG_BOOTLOADER_PROVISION_HEX)
+    include(bootloader/cmake/provision_hex.cmake)
+  endif()
+endif()
+
+add_subdirectory_ifdef(CONFIG_NRF_SECURITY nrf_security)
 
 add_subdirectory(net)
 add_subdirectory_ifdef(CONFIG_ESB		esb)
@@ -53,14 +63,16 @@ if (CONFIG_NFC_T2T_NRFXLIB OR
     CONFIG_NFC_TNEP_POLLER)
         add_subdirectory(nfc)
 endif()
-
-add_subdirectory_ifdef(CONFIG_FW_INFO	fw_info)
+if(CONFIG_FW_INFO OR CONFIG_FW_INFO_API)
+  add_subdirectory(fw_info)
+endif()
 add_subdirectory(shell)
 
 add_subdirectory(debug)
-add_subdirectory(partition_manager)
+add_subdirectory_ifdef(CONFIG_PARTITION_MANAGER_ENABLED partition_manager)
 
 add_subdirectory_ifdef(CONFIG_NRF_RPC nrf_rpc)
 add_subdirectory_ifdef(CONFIG_NRF_802154_RADIO_DRIVER ieee802154)
 add_subdirectory_ifdef(CONFIG_NRF_DM dm)
 add_subdirectory_ifdef(CONFIG_EMDS emds)
+add_subdirectory_ifdef(CONFIG_NET_CORE_MONITOR net_core_monitor)

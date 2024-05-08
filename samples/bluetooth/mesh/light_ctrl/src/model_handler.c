@@ -21,6 +21,37 @@ struct lightness_ctx {
 	uint32_t rem_time;
 };
 
+#if IS_ENABLED(CONFIG_BT_MESH_NLC_PERF_CONF)
+static const uint8_t cmp2_elem_offset1[2] = { 0, 1 };
+static const uint8_t cmp2_elem_offset2[1] = { 0 };
+
+static const struct bt_mesh_comp2_record comp_rec[2] = {
+	{
+	.id = BT_MESH_NLC_PROFILE_ID_BASIC_LIGHTNESS_CONTROLLER,
+	.version.x = 1,
+	.version.y = 0,
+	.version.z = 0,
+	.elem_offset_cnt = 2,
+	.elem_offset = cmp2_elem_offset1,
+	.data_len = 0
+	},
+	{
+	.id = BT_MESH_NLC_PROFILE_ID_ENERGY_MONITOR, /* Energy Monitor NLC Profile 1.0 */
+	.version.x = 1,
+	.version.y = 0,
+	.version.z = 0,
+	.elem_offset_cnt = 1,
+	.elem_offset = cmp2_elem_offset2,
+	.data_len = 0
+	}
+};
+
+static const struct bt_mesh_comp2 comp_p2 = {
+	.record_cnt = 2,
+	.record = comp_rec
+};
+#endif
+
 /* Set up a repeating delayed work to blink the DK's LEDs when attention is
  * requested.
  */
@@ -119,8 +150,10 @@ static void periodic_led_work(struct k_work *work)
 
 	k_work_reschedule(&l_ctx->per_work, K_MSEC(l_ctx->time_per));
 apply_and_print:
-	lc_pwm_led_set(l_ctx->current_lvl);
-	printk("Current light lvl: %u/65535\n", l_ctx->current_lvl);
+	uint16_t clamped_lvl = bt_mesh_lightness_clamp(&l_ctx->lightness_srv,
+						       l_ctx->current_lvl);
+	lc_pwm_led_set(clamped_lvl);
+	printk("Current light lvl: %u/65535\n", clamped_lvl);
 }
 
 static void light_set(struct bt_mesh_lightness_srv *srv,
@@ -132,7 +165,7 @@ static void light_set(struct bt_mesh_lightness_srv *srv,
 		CONTAINER_OF(srv, struct lightness_ctx, lightness_srv);
 
 	start_new_light_trans(set, l_ctx);
-	rsp->current = l_ctx->current_lvl;
+	rsp->current = l_ctx->rem_time ? l_ctx->current_lvl : l_ctx->target_lvl;
 	rsp->target = l_ctx->target_lvl;
 	rsp->remaining_time = set->transition ? set->transition->time : 0;
 }
@@ -144,7 +177,7 @@ static void light_get(struct bt_mesh_lightness_srv *srv,
 	struct lightness_ctx *l_ctx =
 		CONTAINER_OF(srv, struct lightness_ctx, lightness_srv);
 
-	rsp->current = l_ctx->current_lvl;
+	rsp->current = bt_mesh_lightness_clamp(&l_ctx->lightness_srv, l_ctx->current_lvl);
 	rsp->target = l_ctx->target_lvl;
 	rsp->remaining_time = l_ctx->rem_time;
 }
@@ -159,6 +192,54 @@ static struct lightness_ctx my_ctx = {
 
 };
 
+static int dummy_energy_use;
+
+static int energy_use_get(struct bt_mesh_sensor_srv *srv,
+			 struct bt_mesh_sensor *sensor,
+			 struct bt_mesh_msg_ctx *ctx,
+			 struct sensor_value *rsp)
+{
+	/* Report energy usage as dummy value, and increase it by one every time
+	 * a get callback is triggered. The logic and hardware for mesuring
+	 * the actual energy usage of the device should be implemented here.
+	 */
+	rsp[0].val1 = dummy_energy_use;
+	rsp[0].val2 = 0;
+
+	dummy_energy_use++;
+
+	return 0;
+}
+
+static const struct bt_mesh_sensor_descriptor energy_use_desc = {
+	.tolerance = {
+		.negative = {
+			.val1 = 0,
+		},
+		.positive = {
+			.val1 = 0,
+		}
+	},
+	.sampling_type = BT_MESH_SENSOR_SAMPLING_UNSPECIFIED,
+	.period = 0,
+	.update_interval = 0,
+};
+
+static struct bt_mesh_sensor energy_use = {
+	.type = &bt_mesh_sensor_precise_tot_dev_energy_use,
+	.get = energy_use_get,
+	.descriptor = &energy_use_desc,
+};
+
+static struct bt_mesh_sensor *const sensors[] = {
+	&energy_use,
+};
+
+static struct bt_mesh_sensor_srv sensor_srv =
+	BT_MESH_SENSOR_SRV_INIT(sensors, ARRAY_SIZE(sensors));
+
+static struct bt_mesh_scene_srv scene_srv;
+
 static struct bt_mesh_light_ctrl_srv light_ctrl_srv =
 	BT_MESH_LIGHT_CTRL_SRV_INIT(&my_ctx.lightness_srv);
 
@@ -168,7 +249,9 @@ static struct bt_mesh_elem elements[] = {
 			     BT_MESH_MODEL_CFG_SRV,
 			     BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
 			     BT_MESH_MODEL_LIGHTNESS_SRV(
-					 &my_ctx.lightness_srv)),
+					 &my_ctx.lightness_srv),
+			     BT_MESH_MODEL_SCENE_SRV(&scene_srv),
+			     BT_MESH_MODEL_SENSOR_SRV(&sensor_srv)),
 		     BT_MESH_MODEL_NONE),
 	BT_MESH_ELEM(2,
 		     BT_MESH_MODEL_LIST(
@@ -193,6 +276,12 @@ const struct bt_mesh_comp *model_handler_init(void)
 void model_handler_start(void)
 {
 	int err;
+
+#if IS_ENABLED(CONFIG_BT_MESH_NLC_PERF_CONF)
+	if (bt_mesh_comp2_register(&comp_p2)) {
+		printf("Failed to register comp2\n");
+	}
+#endif
 
 	if (bt_mesh_is_provisioned()) {
 		return;

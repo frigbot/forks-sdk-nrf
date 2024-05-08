@@ -5,13 +5,12 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/types.h>
-#include <zephyr/pm/pm.h>
-#include <zephyr/pm/policy.h>
 
 #include <zephyr/device.h>
 #include <hal/nrf_power.h>
 #include <helpers/nrfx_reset_reason.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/poweroff.h>
 
 #include <app_event_manager.h>
 #include <nrf_profiler.h>
@@ -118,10 +117,10 @@ static void restrict_power_state(size_t module, enum power_manager_level lvl)
 		}
 		module_flags_clear_bit(&power_mode_restrict_flags[current], module);
 	}
-	LOG_INF("Power state SUSPENDED: %s",
+	LOG_DBG("Power state SUSPENDED: %s",
 		check_if_power_state_allowed(POWER_MANAGER_LEVEL_SUSPENDED) ?
 			"ALLOWED" : "BLOCKED");
-	LOG_INF("Power state OFF: %s",
+	LOG_DBG("Power state OFF: %s",
 		check_if_power_state_allowed(POWER_MANAGER_LEVEL_OFF) ?
 			"ALLOWED" : "BLOCKED");
 }
@@ -139,11 +138,7 @@ static void system_off(void)
 		 */
 		nrfx_reset_reason_clear(nrfx_reset_reason_get());
 
-		const struct pm_state_info si = {PM_STATE_SOFT_OFF, 0, 0, 0};
-
-		if (!pm_state_force(0, &si)) {
-			LOG_ERR("Failed to force soft off state");
-		}
+		sys_poweroff();
 	} else {
 		LOG_WRN("System suspended");
 	}
@@ -155,11 +150,7 @@ static void system_off_on_error(void)
 	LOG_WRN("System turned off because of unrecoverable error");
 	LOG_PANIC();
 
-	const struct pm_state_info si = {PM_STATE_SOFT_OFF, 0, 0, 0};
-
-	if (!pm_state_force(0, &si)) {
-		LOG_ERR("Failed to force soft off state");
-	}
+	sys_poweroff();
 }
 
 static void power_down(struct k_work *work)
@@ -194,12 +185,6 @@ static void send_wake_up(void)
 	struct wake_up_event *event = new_wake_up_event();
 
 	APP_EVENT_SUBMIT(event);
-}
-
-const struct pm_state_info *pm_policy_next_state(uint8_t cpu, int32_t ticks)
-{
-	/* Return NULL, system should remain into PM_STATE_ACTIVE. */
-	return NULL;
 }
 
 static void error(struct k_work *work)

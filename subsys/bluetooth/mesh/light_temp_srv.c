@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <zephyr/sys/byteorder.h>
 #include <bluetooth/mesh/light_temp_srv.h>
+#include <bluetooth/mesh/light_ctl_srv.h>
 #include <bluetooth/mesh/gen_dtt_srv.h>
 #include "light_ctl_internal.h"
 #include "model_utils.h"
@@ -24,11 +25,9 @@ struct settings_data {
 } __packed;
 
 #if CONFIG_BT_SETTINGS
-static void store_timeout(struct k_work *work)
+static void bt_mesh_light_temp_srv_pending_store(struct bt_mesh_model *model)
 {
-	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-	struct bt_mesh_light_temp_srv *srv = CONTAINER_OF(
-		dwork, struct bt_mesh_light_temp_srv, store_timer);
+	struct bt_mesh_light_temp_srv *srv = model->user_data;
 
 	struct settings_data data = {
 		.dflt = srv->dflt,
@@ -47,9 +46,7 @@ static void store_timeout(struct k_work *work)
 static void store_state(struct bt_mesh_light_temp_srv *srv)
 {
 #if CONFIG_BT_SETTINGS
-	k_work_schedule(
-		&srv->store_timer,
-		K_SECONDS(CONFIG_BT_MESH_MODEL_SRV_STORE_TIMEOUT));
+	bt_mesh_model_data_store_schedule(srv->model);
 #endif
 }
 
@@ -265,9 +262,9 @@ static void lvl_move_set(struct bt_mesh_lvl_srv *lvl_srv,
 	srv->handlers->get(srv, NULL, &status);
 
 	if (move_set->delta > 0) {
-		set.params.temp = srv->range.max;
+		set.params.temp = get_range_max(srv->range.max);
 	} else if (move_set->delta < 0) {
-		set.params.temp = srv->range.min;
+		set.params.temp = get_range_min(srv->range.min);
 	} else {
 		set.params.temp = status.current.temp;
 	}
@@ -330,7 +327,10 @@ static void temp_srv_set(struct bt_mesh_light_temp_srv *srv,
 			 struct bt_mesh_light_temp_set *set,
 			 struct bt_mesh_light_temp_status *status)
 {
-	set->params.temp = MIN(MAX(set->params.temp, srv->range.min), srv->range.max);
+	uint16_t min = get_range_min(srv->range.min);
+	uint16_t max = get_range_max(srv->range.max);
+
+	set->params.temp = CLAMP(set->params.temp, min, max);
 
 	srv->transient.last = set->params;
 	if (!IS_ENABLED(CONFIG_EMDS)) {
@@ -389,27 +389,33 @@ static void light_temp_srv_reset(struct bt_mesh_light_temp_srv *srv)
 static int bt_mesh_light_temp_srv_init(struct bt_mesh_model *model)
 {
 	struct bt_mesh_light_temp_srv *srv = model->user_data;
+	int err;
 
 	srv->model = model;
 	light_temp_srv_reset(srv);
 	net_buf_simple_init(srv->pub.msg, 0);
 
-#if CONFIG_BT_SETTINGS
-	k_work_init_delayable(&srv->store_timer, store_timeout);
-
-#if IS_ENABLED(CONFIG_EMDS)
+#if IS_ENABLED(CONFIG_BT_SETTINGS) && IS_ENABLED(CONFIG_EMDS)
 	srv->emds_entry.entry.id = EMDS_MODEL_ID(model);
 	srv->emds_entry.entry.data = (uint8_t *)&srv->transient;
 	srv->emds_entry.entry.len = sizeof(srv->transient);
-	int err = emds_entry_add(&srv->emds_entry);
+	err = emds_entry_add(&srv->emds_entry);
 
 	if (err) {
 		return err;
 	}
 #endif
+
+#if defined(CONFIG_BT_MESH_COMP_PAGE_1)
+	err = bt_mesh_model_correspond(srv->ctl->model, model);
+
+	if (err) {
+		return err;
+	}
 #endif
 
-	return bt_mesh_model_extend(model, srv->lvl.model);
+	err = bt_mesh_model_extend(model, srv->lvl.model);
+	return err;
 }
 
 static int bt_mesh_light_temp_srv_settings_set(struct bt_mesh_model *model,
@@ -451,6 +457,9 @@ const struct bt_mesh_model_cb _bt_mesh_light_temp_srv_cb = {
 	.init = bt_mesh_light_temp_srv_init,
 	.reset = bt_mesh_light_temp_srv_reset,
 	.settings_set = bt_mesh_light_temp_srv_settings_set,
+#if CONFIG_BT_SETTINGS
+	.pending_store = bt_mesh_light_temp_srv_pending_store,
+#endif
 };
 
 void bt_mesh_light_temp_srv_set(struct bt_mesh_light_temp_srv *srv,
@@ -471,20 +480,23 @@ void bt_mesh_light_temp_srv_set(struct bt_mesh_light_temp_srv *srv,
 	(void)bt_mesh_lvl_srv_pub(&srv->lvl, NULL, &lvl_status);
 }
 
-enum bt_mesh_model_status
-bt_mesh_light_temp_srv_range_set(struct bt_mesh_light_temp_srv *srv,
-				 struct bt_mesh_msg_ctx *ctx,
-				 struct bt_mesh_light_temp_range *range)
+enum bt_mesh_model_status bt_mesh_light_temp_srv_range_set(struct bt_mesh_light_temp_srv *srv,
+							   struct bt_mesh_msg_ctx *ctx,
+							   struct bt_mesh_light_temp_range *range)
 {
 	const struct bt_mesh_light_temp_range old = srv->range;
 
-	if ((range->min < BT_MESH_LIGHT_TEMP_MIN) ||
-	    (range->min > range->max)) {
+	if (range->min < BT_MESH_LIGHT_TEMP_MIN) {
 		return BT_MESH_MODEL_ERROR_INVALID_RANGE_MIN;
 	}
 
-	if (range->max > BT_MESH_LIGHT_TEMP_MAX) {
+	if (range->max > BT_MESH_LIGHT_TEMP_MAX && range->max != BT_MESH_LIGHT_TEMP_UNKNOWN) {
 		return BT_MESH_MODEL_ERROR_INVALID_RANGE_MAX;
+	}
+
+	if (range->max != BT_MESH_LIGHT_TEMP_UNKNOWN && range->min != BT_MESH_LIGHT_TEMP_UNKNOWN &&
+	    range->min > range->max) {
+		return BT_MESH_MODEL_ERROR_INVALID_RANGE_MIN;
 	}
 
 	srv->range = *range;

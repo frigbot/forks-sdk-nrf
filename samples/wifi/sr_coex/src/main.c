@@ -15,8 +15,10 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(coex, CONFIG_LOG_DEFAULT_LEVEL);
 
-#include <nrfx_clock.h>
 #include <zephyr/kernel.h>
+#if defined(CLOCK_FEATURE_HFCLK_DIVIDE_PRESENT) || NRF_CLOCK_HAS_HFCLK192M
+#include <nrfx_clock.h>
+#endif
 #include <zephyr/init.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -191,6 +193,12 @@ static int __wifi_args_to_params(struct wifi_connect_req_params *params)
 {
 	params->timeout = SYS_FOREVER_MS;
 
+	/* Defaults */
+	params->band = WIFI_FREQ_BAND_UNKNOWN;
+	params->channel = WIFI_CHANNEL_ANY;
+	params->security = WIFI_SECURITY_TYPE_NONE;
+	params->mfp = WIFI_MFP_OPTIONAL;
+
 	/* SSID */
 	params->ssid = CONFIG_STA_SAMPLE_SSID;
 	params->ssid_length = strlen(params->ssid);
@@ -209,10 +217,6 @@ static int __wifi_args_to_params(struct wifi_connect_req_params *params)
 	params->psk = CONFIG_STA_SAMPLE_PASSWORD;
 	params->psk_length = strlen(params->psk);
 #endif
-	params->channel = WIFI_CHANNEL_ANY;
-
-	/* MFP (optional) */
-	params->mfp = WIFI_MFP_OPTIONAL;
 
 	return 0;
 }
@@ -363,7 +367,10 @@ int main(void)
 	enum nrf_wifi_pta_wlan_op_band wlan_band;
 	bool separate_antennas = IS_ENABLED(CONFIG_COEX_SEP_ANTENNAS);
 #endif /* CONFIG_NRF700X_BT_COEX */
-#if !defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP) && !defined(CONFIG_COEX_SEP_ANTENNAS)
+
+#if !defined(CONFIG_COEX_SEP_ANTENNAS) && \
+	!(defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	   defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP))
 	BUILD_ASSERT("Shared antenna support is not available with nRF7002 shields");
 #endif
 
@@ -381,7 +388,7 @@ int main(void)
 
 	net_mgmt_add_event_callback(&net_addr_mgmt_cb);
 
-#ifdef CLOCK_FEATURE_HFCLK_DIVIDE_PRESENT
+#if defined(CLOCK_FEATURE_HFCLK_DIVIDE_PRESENT) || NRF_CLOCK_HAS_HFCLK192M
 	nrfx_clock_divider_set(NRF_CLOCK_DOMAIN_HFCLK, NRF_CLOCK_HFCLK_DIV_1);
 #endif
 
@@ -390,14 +397,16 @@ int main(void)
 
 	LOG_INF("test_wlan = %d and test_ble = %d\n", test_wlan, test_ble);
 
-#ifdef CONFIG_NRF700X_BT_COEX
-	/* Configure SR side (nRF5340 side) switch in nRF7002 DK */
+
+#if defined(CONFIG_BOARD_NRF7002DK_NRF7001_NRF5340_CPUAPP) || \
+	defined(CONFIG_BOARD_NRF7002DK_NRF5340_CPUAPP)
+	/* Configure SR side (nRF5340 side) switch for nRF700x DK */
 	ret = nrf_wifi_config_sr_switch(separate_antennas);
 	if (ret != 0) {
 		LOG_ERR("Unable to configure SR side switch: %d\n", ret);
 		goto err;
 	}
-#endif /* CONFIG_NRF700X_BT_COEX */
+#endif
 
 	if (test_wlan) {
 		/* Wi-Fi connection */

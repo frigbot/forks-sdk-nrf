@@ -288,10 +288,6 @@ static int range_set(struct bt_mesh_model *model, struct bt_mesh_msg_ctx *ctx,
 
 	hue.min = net_buf_simple_pull_le16(buf);
 	hue.max = net_buf_simple_pull_le16(buf);
-	if (hue.max < hue.min) {
-		return -EINVAL;
-	}
-
 
 	sat.min = net_buf_simple_pull_le16(buf);
 	sat.max = net_buf_simple_pull_le16(buf);
@@ -586,6 +582,13 @@ static int bt_mesh_light_hsl_setup_srv_init(struct bt_mesh_model *model)
 	if (err) {
 		return err;
 	}
+
+#if defined(CONFIG_BT_MESH_COMP_PAGE_1)
+	err = bt_mesh_model_correspond(model, srv->model);
+	if (err) {
+		return err;
+	}
+#endif
 
 	lightness_setup_srv = bt_mesh_model_find(bt_mesh_model_elem(model),
 						 BT_MESH_MODEL_ID_LIGHT_LIGHTNESS_SETUP_SRV);

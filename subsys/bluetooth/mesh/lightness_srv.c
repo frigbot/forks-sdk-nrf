@@ -30,11 +30,9 @@ struct bt_mesh_lightness_srv_settings_data {
 static const char *const repr_str[] = { "Actual", "Linear" };
 
 #if CONFIG_BT_SETTINGS
-static void store_timeout(struct k_work *work)
+static void bt_mesh_lightness_srv_pending_store(struct bt_mesh_model *model)
 {
-	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
-	struct bt_mesh_lightness_srv *srv = CONTAINER_OF(
-		dwork, struct bt_mesh_lightness_srv, store_timer);
+	struct bt_mesh_lightness_srv *srv = model->user_data;
 
 	struct bt_mesh_lightness_srv_settings_data data = {
 		.default_light = srv->default_light,
@@ -62,9 +60,7 @@ static void store_timeout(struct k_work *work)
 static void store_state(struct bt_mesh_lightness_srv *srv)
 {
 #if CONFIG_BT_SETTINGS
-	k_work_schedule(
-		&srv->store_timer,
-		K_SECONDS(CONFIG_BT_MESH_MODEL_SRV_STORE_TIMEOUT));
+	bt_mesh_model_data_store_schedule(srv->lightness_model);
 #endif
 }
 
@@ -592,12 +588,18 @@ static void lvl_delta_set(struct bt_mesh_lvl_srv *lvl_srv,
 		srv->delta_start = to_actual(status.current);
 	}
 
-	/* Clamp the value to the lightness range before storing it in an
-	 * unsigned 16 bit value, as this would overflow if the target is beyond
-	 * its storage limits, causing invalid values.
-	 */
-	target_actual = CLAMP(srv->delta_start + delta_set->delta,
-			      BT_MESH_LIGHTNESS_MIN, BT_MESH_LIGHTNESS_MAX);
+	if (srv->delta_start == 0 && delta_set->delta <= 0) {
+		/* Do not clamp to range when dimming down from zero, to avoid
+		 * the light to turn on when dimmed down.
+		 */
+		target_actual = 0;
+	} else {
+		/* Clamp the value to the lightness range to prevent that it moves
+		 * back to zero in binding with Generic Level state.
+		 */
+		target_actual = CLAMP(srv->delta_start + delta_set->delta,
+				      to_actual(srv->range.min), to_actual(srv->range.max));
+	}
 
 	struct bt_mesh_lightness_set set = {
 		/* Converting back to configured space: */
@@ -610,21 +612,6 @@ static void lvl_delta_set(struct bt_mesh_lvl_srv *lvl_srv,
 	 */
 	lightness_srv_disable_control(srv);
 	lightness_srv_change_lvl(srv, ctx, &set, &status, true);
-
-	/* Override the "last" value if this is dimmed all the way to off. Then
-	 * set the "last" value to the value it was before the dimming was
-	 * started.
-	 */
-	if ((set.lvl == 0) && (from_actual(srv->delta_start) != 0) &&
-	    (from_actual(srv->delta_start) != srv->transient.last)) {
-		/* Recalulate it back to light state when overriding the "last"
-		 * value.
-		 */
-		srv->transient.last = from_actual(srv->delta_start);
-		if (!IS_ENABLED(CONFIG_EMDS)) {
-			store_state(srv);
-		}
-	}
 
 	if (rsp) {
 		rsp->current = LIGHT_TO_LVL(status.current);
@@ -651,7 +638,7 @@ static void lvl_move_set(struct bt_mesh_lvl_srv *lvl_srv,
 	if (move_set->delta > 0) {
 		target = srv->range.max;
 	} else if (move_set->delta < 0) {
-		target = srv->range.min;
+		target = status.current == 0 ? 0 : srv->range.min;
 	} else {
 		target = status.current;
 	}
@@ -662,8 +649,15 @@ static void lvl_move_set(struct bt_mesh_lvl_srv *lvl_srv,
 		.transition = NULL,
 	};
 
-	if (move_set->delta != 0 && move_set->transition) {
+	if (move_set->delta != 0 && move_set->transition && target != status.current) {
 		uint32_t distance = abs(target - status.current);
+		if (status.current == 0) {
+			/* Subtract RANGE_MIN when dimming up from zero to avoid taking
+			 * the "jumped" distance between 0 and RANGE_MIN into account
+			 * when computing the timing.
+			 */
+			distance -= srv->range.min;
+		}
 		/* Note: We're not actually converting from the lightness actual
 		 * space to the linear space here, even if configured. This
 		 * means that a generic level server communicating with a
@@ -856,10 +850,7 @@ static int bt_mesh_lightness_srv_init(struct bt_mesh_model *model)
 	net_buf_simple_init_with_data(&srv->pub_buf, srv->pub_data,
 				      sizeof(srv->pub_data));
 
-#if CONFIG_BT_SETTINGS
-	k_work_init_delayable(&srv->store_timer, store_timeout);
-
-#if IS_ENABLED(CONFIG_EMDS)
+#if IS_ENABLED(CONFIG_BT_SETTINGS) && IS_ENABLED(CONFIG_EMDS)
 	srv->emds_entry.entry.id = EMDS_MODEL_ID(model);
 	srv->emds_entry.entry.data = (uint8_t *)&srv->transient;
 	srv->emds_entry.entry.len = sizeof(srv->transient);
@@ -867,7 +858,6 @@ static int bt_mesh_lightness_srv_init(struct bt_mesh_model *model)
 	if (err) {
 		return err;
 	}
-#endif
 #endif
 
 	err = bt_mesh_model_extend(model, srv->ponoff.ponoff_model);
@@ -972,6 +962,7 @@ const struct bt_mesh_model_cb _bt_mesh_lightness_srv_cb = {
 #ifdef CONFIG_BT_SETTINGS
 	.settings_set = bt_mesh_lightness_srv_settings_set,
 	.start = bt_mesh_lightness_srv_start,
+	.pending_store = bt_mesh_lightness_srv_pending_store,
 #endif
 };
 
@@ -986,6 +977,13 @@ static int bt_mesh_lightness_setup_srv_init(struct bt_mesh_model *model)
 	if (err) {
 		return err;
 	}
+
+#if defined(CONFIG_BT_MESH_COMP_PAGE_1)
+	err = bt_mesh_model_correspond(model, srv->lightness_model);
+	if (err) {
+		return err;
+	}
+#endif
 
 	return bt_mesh_model_extend(model, srv->ponoff.ponoff_setup_model);
 }

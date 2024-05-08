@@ -24,6 +24,17 @@ You can configure the Matter protocol to use NFC tag for commissioning, instead 
 
 To enable NFC for commissioning and share the onboarding payload in an NFC tag, set the :kconfig:option:`CONFIG_CHIP_NFC_COMMISSIONING` Kconfig option.
 
+.. _ug_matter_configuring_optional_persistent_subscriptions:
+
+Persistent subscriptions
+========================
+
+You can configure the Matter protocol to keep Matter subscriptions on the publisher node.
+This allows the device to save information about subscriptions and use it to re-establish the subscriptions immediately when coming back online after being offline for a longer time, for example due to a power outage.
+This is a much faster way than waiting for the subscriber node to notice that the publisher node is again available in the network.
+
+To enable persistent subscriptions, set the :kconfig:option:`CONFIG_CHIP_PERSISTENT_SUBSCRIPTIONS` Kconfig option.
+
 .. _ug_matter_configuring_optional_log:
 
 Logging configuration
@@ -71,6 +82,8 @@ Some of these can be configured using the Kconfig options listed below:
 * :kconfig:option:`CONFIG_CHIP_ROTATING_DEVICE_ID` enables an optional rotating device identifier feature that provides an additional unique identifier for each device.
   This identifier is similar to the serial number, but it additionally changes at predefined times to protect against long-term tracking of the device.
 
+.. _ug_matter_configuring_ffs:
+
 Amazon Frustration-Free Setup support
 =====================================
 
@@ -87,7 +100,44 @@ To enable the FFS support, set the following configuration options to meet the A
 * :kconfig:option:`CONFIG_CHIP_DEVICE_TYPE` to the appropriate value, depending on the device used.
   The value must be compliant with the Matter Device Type Identifier.
 
+Every Matter device must use an unique device identifier for rotating device identifier calculation purpose.
+By default, the identifier is set to a random value and stored in the factory data partition.
+You can choose your own unique identifier value instead by setting the :kconfig:option:`CONFIG_CHIP_DEVICE_GENERATE_ROTATING_DEVICE_UID` Kconfig option to ``n`` and using the :kconfig:option:`CONFIG_CHIP_DEVICE_ROTATING_DEVICE_UID` Kconfig option.
+When using your own identifier, the value can be stored in either firmware or factory data.
+For more information about the factory data generation, see the :ref:`Matter Device Factory Provisioning<ug_matter_device_factory_provisioning>` page.
+
 To read more about the FFS technology and its compatibility with Matter, see the following pages in the Amazon developer documentation:
 
 * `Matter Simple Setup for Wi-Fi Overview`_
 * `Matter Simple Setup for Thread Overview`_
+
+Reaction to the last Matter fabric removal
+==========================================
+
+.. include:: ../end_product/last_fabric_removal_delegate.rst
+    :start-after: matter_last_fabric_removal_description_start
+    :end-before: matter_last_fabric_removal_description_end
+
+When the device leaves the last fabric, one of several reactions can be set to happen.
+
+To enable one of the reactions to the last fabric removal, set the corresponding Kconfig option to ``y``:
+
+* :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_NONE` - Do not react to the last fabric removal.
+  The device will keep all saved data and network credentials, and will not reboot.
+* :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_ERASE_ONLY` - Remove all saved network credentials.
+  The device will remove all saved network credentials, keep application-specific non-volatile data, and will not reboot.
+* :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_ERASE_AND_PAIRING_START` - Remove all saved network credentials and start Bluetooth LE advertising.
+  The device will remove all saved network credentials, keep application-specific non-volatile data, and start advertising Bluetooth LE Matter service.
+  After that, it will be ready for commissioning to Matter over Bluetooth LE.
+* :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_ERASE_AND_REBOOT` - Remove all saved network credentials and reboot the device.
+  This option is selected by default.
+
+  When the :kconfig:option:`CONFIG_CHIP_FACTORY_RESET_ERASE_NVS` Kconfig option is also set to ``y``, the device will also remove all non-volatile data stored on the device, including application-specific entries.
+  This means the device is restored to the factory settings.
+
+To create a delay between  the chosen reaction and the last fabric being removed, set the :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_ACTION_DELAY` Kconfig option to a specific time in milliseconds.
+By default this Kconfig option is set to 1 second.
+
+.. note::
+  The :kconfig:option:`CONFIG_CHIP_FACTORY_RESET_ERASE_NVS` Kconfig option is set to ``y`` by default.
+  To disable removing application-specific non-volatile data when the :kconfig:option:`CONFIG_CHIP_LAST_FABRIC_REMOVED_ERASE_AND_REBOOT` Kconfig option is selected, set the :kconfig:option:`CONFIG_CHIP_FACTORY_RESET_ERASE_NVS` Kconfig option to ``n``.

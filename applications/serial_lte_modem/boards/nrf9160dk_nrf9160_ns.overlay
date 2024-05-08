@@ -12,6 +12,7 @@
 
 &uart0 {
 	status = "okay";
+	hw-flow-control;
 };
 
 &uart2 {
@@ -50,5 +51,12 @@
 				<NRF_PSEL(UART_CTS, 0, 13)>;
 			low-power-enable;
 		};
+	};
+};
+
+/* Enable external flash */
+&spi3 {
+	mx25r64: mx25r6435f@1 {
+		status = "okay";
 	};
 };

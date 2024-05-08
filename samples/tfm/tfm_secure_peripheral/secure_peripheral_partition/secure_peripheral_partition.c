@@ -6,10 +6,9 @@
 
 #include <psa/crypto.h>
 #include <stdint.h>
-#include "tfm_secure_api.h"
 #include "tfm_api.h"
 
-#include "tfm_spm_log.h"
+#include "tfm_sp_log.h"
 
 #include "nrfx_gpiote.h"
 #include "hal/nrf_egu.h"
@@ -29,7 +28,7 @@
 #if defined(CONFIG_BOARD_NRF5340DK_NRF5340_CPUAPP_NS)
 #define SCK_PIN         47 /* P1.15 */
 #define MOSI_PIN        45 /* P1.13 */
-#elif defined(CONFIG_BOARD_NRF9160DK_NRF9160_NS)
+#elif defined(CONFIG_BOARD_NRF9160DK_NRF9160_NS) || defined(CONFIG_BOARD_NRF9161DK_NRF9161_NS)
 #define SCK_PIN         13 /* P0.13 */
 #define MOSI_PIN        11 /* P0.11 */
 #endif
@@ -177,14 +176,14 @@ static void spp_signals_process(psa_signal_t signals)
 	if (signals & TFM_TIMER1_IRQ_SIGNAL) {
 		m_timer_count++;
 
-		SPMLOG_INFMSGVAL("IRQ: TIMER1 count: ", m_timer_count);
+		LOG_INFFMT("IRQ: TIMER1 count: %d\r\n", m_timer_count);
 
 		psa_reset_signal(TFM_TIMER1_IRQ_SIGNAL);
 	}
 	if (signals & TFM_GPIOTE0_IRQ_SIGNAL) {
 		m_button_count++;
 
-		SPMLOG_INFMSGVAL("IRQ: GPIOTE0 count: ", m_button_count);
+		LOG_INFFMT("IRQ: GPIOTE0 count: %d\r\n", m_button_count);
 
 		psa_reset_signal(TFM_GPIOTE0_IRQ_SIGNAL);
 	}

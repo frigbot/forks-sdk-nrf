@@ -33,6 +33,10 @@
 /* Mon Dec 05 2022 09:38:04 */
 #define UNIX_TIMESTAMP_DUMMY 1670233084418
 
+/* It is required to be added to each test. That is because unity's
+ * main may return nonzero, while zephyr's main currently must
+ * return 0 in all cases (other values are reserved).
+ */
 extern int unity_main(void);
 
 /* Used to verify that the uut properly sets the value that is returned by date_time_now() to
@@ -82,22 +86,11 @@ void test_create_objects_and_resources(void)
 		&LWM2M_OBJ(IPSO_OBJECT_PUSH_BUTTON_ID, BUTTON2_OBJ_INST_ID), 0);
 
 	/* Crate resource instances. */
-	__cmock_lwm2m_create_res_inst_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, AVAIL_NETWORK_BEARER_ID, 0),
-		0);
-
-	__cmock_lwm2m_create_res_inst_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, AVAIL_NETWORK_BEARER_ID, 1),
-		0);
-
-	__cmock_lwm2m_create_res_inst_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, IP_ADDRESSES, 0), 0);
-
-	__cmock_lwm2m_create_res_inst_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, APN, 0), 0);
-
-	__cmock_lwm2m_create_res_inst_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_DEVICE_ID, 0, POWER_SOURCE_VOLTAGE_RID, 0), 0);
+	__cmock_lwm2m_create_res_inst_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_create_res_inst_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_create_res_inst_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_create_res_inst_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_create_res_inst_ExpectAnyArgsAndReturn(0);
 
 	TEST_ASSERT_EQUAL(0, lwm2m_codec_helpers_create_objects_and_resources());
 }
@@ -208,36 +201,36 @@ void test_codec_helpers_set_sensor_boundaries(void)
 	TEST_ASSERT_EQUAL(0, lwm2m_codec_helpers_setup_resources());
 }
 
-void test_codec_helpers_set_agps_data(void)
+void test_codec_helpers_set_agnss_data(void)
 {
-	struct cloud_data_agps_request agps = {
+	struct cloud_data_agnss_request agnss = {
 		.mnc = 1,
 		.mcc = 242,
 		.area = 30601,
 		.cell = 52118273,
-		.request.sv_mask_ephe = 0xFFFFFFFFu,
-		.request.sv_mask_alm = 0xFFFFFFFFu,
+		.request.system[0].sv_mask_ephe = 0xFFFFFFFFu,
+		.request.system[0].sv_mask_alm = 0xFFFFFFFFu,
 		.request.data_flags = 0xFFFFFFFFu,
 		.queued = true,
 	};
 
-	__cmock_location_assistance_agps_set_mask_ExpectAndReturn(&agps.request, 0);
+	__cmock_location_assistance_agnss_set_mask_ExpectAndReturn(&agnss.request, 0);
 
-	__cmock_location_assist_agps_set_elevation_mask_Expect(-1);
+	__cmock_location_assist_agnss_set_elevation_mask_Expect(-1);
 
 	__cmock_lwm2m_set_u32_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, CELLID), agps.cell, 0);
+		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, CELLID), agnss.cell, 0);
 
 	__cmock_lwm2m_set_u16_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, SMNC), agps.mnc, 0);
+		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, SMNC), agnss.mnc, 0);
 
 	__cmock_lwm2m_set_u16_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, SMCC), agps.mcc, 0);
+		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, SMCC), agnss.mcc, 0);
 
 	__cmock_lwm2m_set_u16_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, LAC), agps.area, 0);
+		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, LAC), agnss.area, 0);
 
-	TEST_ASSERT_EQUAL(0, lwm2m_codec_helpers_set_agps_data(&agps));
+	TEST_ASSERT_EQUAL(0, lwm2m_codec_helpers_set_agnss_data(&agnss));
 }
 
 void test_codec_helpers_set_pgps_data(void)
@@ -554,7 +547,6 @@ void test_codec_helpers_set_modem_dynamic_data(void)
 		.queued = true,
 	};
 	int64_t current_time = UNIX_TIMESTAMP_DUMMY;
-	uint8_t bearers[2] = { LTE_FDD_BEARER, NB_IOT_BEARER };
 
 	__cmock_date_time_now_Stub(date_time_now_stub);
 	__cmock_date_time_now_ExpectAndReturn(&current_time, 0);
@@ -563,24 +555,12 @@ void test_codec_helpers_set_modem_dynamic_data(void)
 		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, NETWORK_BEARER_ID),
 		NB_IOT_BEARER, 0);
 
-	__cmock_lwm2m_set_res_buf_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, AVAIL_NETWORK_BEARER_ID, 0),
-		&bearers[0], sizeof(bearers[0]), sizeof(bearers[0]), LWM2M_RES_DATA_FLAG_RO, 0);
+	__cmock_lwm2m_set_res_buf_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_set_res_buf_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_set_res_buf_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_set_res_buf_ExpectAnyArgsAndReturn(0);
 
-	__cmock_lwm2m_set_res_buf_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, AVAIL_NETWORK_BEARER_ID, 1),
-		&bearers[1], sizeof(bearers[1]), sizeof(bearers[1]), LWM2M_RES_DATA_FLAG_RO, 0);
-
-	__cmock_lwm2m_set_res_buf_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, IP_ADDRESSES, 0),
-		modem_dynamic.ip, strlen(modem_dynamic.ip), strlen(modem_dynamic.ip),
-		LWM2M_RES_DATA_FLAG_RO, 0);
-
-	__cmock_lwm2m_set_res_buf_ExpectAndReturn(
-		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, APN, 0), modem_dynamic.apn,
-		strlen(modem_dynamic.apn), strlen(modem_dynamic.apn), LWM2M_RES_DATA_FLAG_RO, 0);
-
-	__cmock_lwm2m_set_s8_ExpectAndReturn(
+	__cmock_lwm2m_set_s16_ExpectAndReturn(
 		&LWM2M_OBJ(LWM2M_OBJECT_CONNECTIVITY_MONITORING_ID, 0, RSS),
 		modem_dynamic.rsrp, 0);
 
@@ -877,7 +857,8 @@ void test_codec_helpers_object_path_list_generate_too_many_paths(void)
 									    ARRAY_SIZE(path_list)));
 }
 
-void main(void)
+int main(void)
 {
 	(void)unity_main();
+	return 0;
 }

@@ -19,6 +19,10 @@ CHIP_ERROR OTAMultiImageProcessorImpl::PrepareDownload()
 
 	TriggerFlashAction(ExternalFlashManager::Action::WAKE_UP);
 
+#ifdef CONFIG_WIFI_NRF700X
+	ReturnErrorOnFailure(WiFiManager::Instance().SetLowPowerMode(false));
+#endif /* CONFIG_WIFI_NRF700X */
+
 	return DeviceLayer::SystemLayer().ScheduleLambda(
 		[this] { mDownloader->OnPreparedForDownload(PrepareMultiDownload()); });
 }
@@ -44,7 +48,7 @@ CHIP_ERROR OTAMultiImageProcessorImpl::PrepareMultiDownload()
 
 CHIP_ERROR OTAMultiImageProcessorImpl::ConfirmCurrentImage()
 {
-	CHIP_ERROR err = System::MapErrorZephyr(boot_write_img_confirmed());
+	CHIP_ERROR err = mImageConfirmed ? CHIP_NO_ERROR : CHIP_ERROR_INCORRECT_STATE;
 	if (err == CHIP_NO_ERROR) {
 		err = System::MapErrorZephyr(OTAMultiImageDownloaders::Apply());
 	}

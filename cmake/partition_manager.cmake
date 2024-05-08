@@ -26,8 +26,9 @@ endmacro()
 # Load static configuration if found.
 # Try user defined file first, then file found in configuration directory,
 # finally file from board directory.
-
-set(user_def_pm_static ${PM_STATIC_YML_FILE})
+if(DEFINED PM_STATIC_YML_FILE)
+  string(CONFIGURE "${PM_STATIC_YML_FILE}" user_def_pm_static)
+endif()
 
 ncs_file(CONF_FILES ${APPLICATION_CONFIG_DIR}
          PM conf_dir_pm_static
@@ -56,7 +57,7 @@ elseif (EXISTS ${board_dir_pm_static_common})
   set(static_configuration_file ${board_dir_pm_static_common})
 endif()
 
-if (EXISTS ${static_configuration_file})
+if (EXISTS "${static_configuration_file}" AND NOT SYSBUILD)
   message(STATUS "Found partition manager static configuration: "
                  "${static_configuration_file}"
   )
@@ -71,6 +72,22 @@ if (NOT static_configuration AND CONFIG_PM_IMAGE_NOT_BUILT_FROM_SOURCE)
     the 'Scripts -> Partition Manager -> Static configuration' chapter in the \
     documentation. Without this information, the build system is not able to \
     place the image correctly in flash.")
+endif()
+
+if (NOT static_configuration AND
+  (CONFIG_BOOTLOADER_MCUBOOT OR CONFIG_SECURE_BOOT))
+      message(WARNING "
+        ---------------------------------------------------------------------
+        --- WARNING: Using a bootloader without pm_static.yml.            ---
+        --- There are cases where a deployed product can consist of       ---
+        --- multiple images, and only a subset of these images can be     ---
+        --- upgraded through a firmware update mechanism. In such cases,  ---
+        --- the upgradable images must have partitions that are static    ---
+        --- and are matching the partition map used by the bootloader     ---
+        --- programmed onto the device.                                   ---
+        ---------------------------------------------------------------------
+        \n"
+      )
 endif()
 
 
@@ -106,7 +123,9 @@ if (NOT (
   (NOT IMAGE_NAME AND PM_IMAGES) OR
   (NOT IMAGE_NAME AND PM_DOMAINS) OR
   (PM_SUBSYS_PREPROCESSED AND CONFIG_PM_SINGLE_IMAGE)
-  ))
+  )
+  OR SYSBUILD
+  )
   return()
 endif()
 
@@ -177,8 +196,8 @@ list(APPEND header_files ${ZEPHYR_BINARY_DIR}/${generated_path}/pm_config.h)
 # Add subsys defined pm.yml to the input_files
 list(APPEND input_files ${PM_SUBSYS_PREPROCESSED})
 
-if (DEFINED CONFIG_SOC_NRF9160)
-  # See nRF9160 Product Specification, chapter "UICR"
+if (DEFINED CONFIG_SOC_SERIES_NRF91X)
+  # See nRF91 Product Specification, chapter "UICR"
   set(otp_start_addr "0xff8108")
   set(otp_size 756) # 189 * 4
 elseif (DEFINED CONFIG_SOC_NRF5340_CPUAPP)
@@ -197,7 +216,7 @@ add_region(
 
 math(EXPR flash_size "${CONFIG_FLASH_SIZE} * 1024" OUTPUT_FORMAT HEXADECIMAL)
 
-if (CONFIG_SOC_NRF9160 OR CONFIG_SOC_NRF5340_CPUAPP)
+if (CONFIG_SOC_SERIES_NRF91X OR CONFIG_SOC_NRF5340_CPUAPP)
   add_region(
     NAME otp
     SIZE ${otp_size}
@@ -275,7 +294,7 @@ set(pm_out_dotconf_file ${APPLICATION_BINARY_DIR}/pm${UNDERSCORE_DOMAIN}.config)
 
 set(pm_cmd
   ${PYTHON_EXECUTABLE}
-  ${NRF_DIR}/scripts/partition_manager.py
+  ${ZEPHYR_NRF_MODULE_DIR}/scripts/partition_manager.py
   --input-files ${input_files}
   --regions ${regions}
   --output-partitions ${pm_out_partition_file}
@@ -287,7 +306,7 @@ set(pm_cmd
 
 set(pm_output_cmd
   ${PYTHON_EXECUTABLE}
-  ${NRF_DIR}/scripts/partition_manager_output.py
+  ${ZEPHYR_NRF_MODULE_DIR}/scripts/partition_manager_output.py
   --input-partitions ${pm_out_partition_file}
   --input-regions ${pm_out_region_file}
   --config-file ${pm_out_dotconf_file}
@@ -320,7 +339,7 @@ endif()
 add_custom_target(partition_manager)
 
 # Make Partition Manager configuration available in CMake
-import_kconfig(PM_ ${pm_out_dotconf_file} pm_var_names)
+import_pm_config(${pm_out_dotconf_file} pm_var_names)
 
 foreach(name ${pm_var_names})
   set_property(
@@ -434,8 +453,27 @@ if (CONFIG_SECURE_BOOT AND CONFIG_BOOTLOADER_MCUBOOT)
   # of the symbols used to generate the offset is only available as a
   # generator expression when MCUBoots cmake code exectues. This because
   # partition manager is performed as the last step in the configuration stage.
-  math(EXPR s0_offset "${PM_MCUBOOT_SECONDARY_ADDRESS} - ${PM_S0_ADDRESS}")
-  math(EXPR s1_offset "${PM_MCUBOOT_SECONDARY_ADDRESS} - ${PM_S1_ADDRESS}")
+  if(CONFIG_PM_EXTERNAL_FLASH_MCUBOOT_SECONDARY AND CONFIG_HAS_HW_NRF_QSPI)
+    if(DEFINED ext_flash_dev)
+      get_filename_component(qspi_node ${ext_flash_dev} DIRECTORY)
+    else()
+      dt_nodelabel(qspi_node NODELABEL "qspi")
+    endif()
+    if(DEFINED qspi_node)
+      dt_reg_addr(xip_addr PATH ${qspi_node} NAME qspi_mm)
+      if(NOT DEFINED xip_addr)
+        message(WARNING "\
+        Could not find memory mapped address for XIP. Generated update hex files will \
+        not have the correct base address. Hence they can not be programmed directly \
+        to the external flash")
+      endif()
+    endif()
+  else()
+    set(xip_addr 0)
+  endif()
+
+  math(EXPR s0_offset "${xip_addr} + ${PM_MCUBOOT_SECONDARY_ADDRESS} - ${PM_S0_ADDRESS}")
+  math(EXPR s1_offset "${xip_addr} + ${PM_MCUBOOT_SECONDARY_ADDRESS} - ${PM_S1_ADDRESS}")
 
   set_property(
     TARGET partition_manager
@@ -491,13 +529,13 @@ else()
       list(APPEND global_hex_depends    ${${d}_PM_DOMAIN_DYNAMIC_PARTITION}_subimage)
 
       # Add domain prefix cmake variables for all partitions
-      # Here, we actually overwrite the already imported kconfig values
+      # Here, we actually overwrite the already imported pm.config values
       # for our own domain. This is not an issue since all of these variables
       # are accessed through the 'partition_manager' target, and most likely
       # through generator expression, as this file is one of the last
       # cmake files executed in the configure stage.
       get_shared(conf_file IMAGE ${d} PROPERTY PM_DOTCONF_FILES)
-      import_kconfig(PM_ ${conf_file} ${d}_pm_var_names)
+      import_pm_config(${conf_file} ${d}_pm_var_names)
 
       foreach(name ${${d}_pm_var_names})
         set_property(
@@ -610,7 +648,7 @@ to the external flash")
   # available. Generate the global pm_config.h, and provide it to all images.
   set(pm_global_output_cmd
     ${PYTHON_EXECUTABLE}
-    ${NRF_DIR}/scripts/partition_manager_output.py
+    ${ZEPHYR_NRF_MODULE_DIR}/scripts/partition_manager_output.py
     --input-partitions ${pm_out_partition_file}
     --input-regions ${pm_out_region_file}
     --header-files ${header_files}
@@ -652,7 +690,8 @@ to the external flash")
   if (PM_DOMAINS)
     # For convenience, generate global hex file containing all domains' hex
     # files.
-    set(final_merged ${ZEPHYR_BINARY_DIR}/merged_domains.hex)
+    set(merged_domains  merged_domains)
+    set(final_merged ${ZEPHYR_BINARY_DIR}/${merged_domains}.hex)
 
     # Add command to merge files.
     add_custom_command(
@@ -684,21 +723,20 @@ endif()
 # set that variable. Hence we must operate on the 'yaml_contents' property,
 # which is evaluated in a generator expression.
 
-if (final_merged)
+if (merged_domains)
   # Multiple domains are included in the build, point to the result of
   # merging the merged hex file for all domains.
-  set(merged_hex_to_flash ${final_merged})
+  set(merged_hex_to_flash ${merged_domains}.hex)
 else()
-  set(merged_hex_to_flash ${PROJECT_BINARY_DIR}/${merged}.hex)
+  set(merged_hex_to_flash ${merged}.hex)
 endif()
 
 get_target_property(runners_content runners_yaml_props_target yaml_contents)
 
 string(REGEX REPLACE "hex_file:[^\n]*"
-  "hex_file: ${merged_hex_to_flash}" new  ${runners_content})
+  "hex_file: ${merged_hex_to_flash}" runners_content_updated_hex_file ${runners_content})
 
 set_property(
   TARGET         runners_yaml_props_target
-  PROPERTY       yaml_contents
-  ${new}
+  PROPERTY       yaml_contents ${runners_content_updated_hex_file}
   )

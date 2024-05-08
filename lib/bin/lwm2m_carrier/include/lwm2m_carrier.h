@@ -26,33 +26,37 @@ extern "C" {
  * @name LwM2M carrier library events.
  * @{
  */
-/** Carrier library initialized. */
-#define LWM2M_CARRIER_EVENT_INIT	  1
 /** Request connect to the LTE network. */
-#define LWM2M_CARRIER_EVENT_LTE_LINK_UP	  2
+#define LWM2M_CARRIER_EVENT_LTE_LINK_UP	   1
 /**
  * Request disconnect from the LTE network.
  * The link must be offline until a subsequent LWM2M_CARRIER_EVENT_LTE_LINK_UP event.
  */
-#define LWM2M_CARRIER_EVENT_LTE_LINK_DOWN 3
+#define LWM2M_CARRIER_EVENT_LTE_LINK_DOWN  2
 /** Request power off LTE network. */
-#define LWM2M_CARRIER_EVENT_LTE_POWER_OFF 4
+#define LWM2M_CARRIER_EVENT_LTE_POWER_OFF  3
 /** LwM2M carrier bootstrapped. */
-#define LWM2M_CARRIER_EVENT_BOOTSTRAPPED  6
+#define LWM2M_CARRIER_EVENT_BOOTSTRAPPED   4
 /** LwM2M carrier registered. */
-#define LWM2M_CARRIER_EVENT_REGISTERED	  7
+#define LWM2M_CARRIER_EVENT_REGISTERED	   5
 /** LwM2M carrier operation is deferred. */
-#define LWM2M_CARRIER_EVENT_DEFERRED	  8
+#define LWM2M_CARRIER_EVENT_DEFERRED	   6
 /** Firmware update started. */
-#define LWM2M_CARRIER_EVENT_FOTA_START	  9
+#define LWM2M_CARRIER_EVENT_FOTA_START	   7
+/** Firmware update succeeded. */
+#define LWM2M_CARRIER_EVENT_FOTA_SUCCESS   8
 /** Application will reboot. */
-#define LWM2M_CARRIER_EVENT_REBOOT	  10
+#define LWM2M_CARRIER_EVENT_REBOOT	   9
 /** Modem domain event received. */
-#define LWM2M_CARRIER_EVENT_MODEM_DOMAIN  12
-/** Data received through the App Data Container object */
-#define LWM2M_CARRIER_EVENT_APP_DATA      13
+#define LWM2M_CARRIER_EVENT_MODEM_DOMAIN   10
+/** Data received through the App Data Container object or the Binary App Data Container object. */
+#define LWM2M_CARRIER_EVENT_APP_DATA       11
+/** Request to initialize the modem. */
+#define LWM2M_CARRIER_EVENT_MODEM_INIT     12
+/** Request to shut down the modem. */
+#define LWM2M_CARRIER_EVENT_MODEM_SHUTDOWN 13
 /** An error occurred. */
-#define LWM2M_CARRIER_EVENT_ERROR	  20
+#define LWM2M_CARRIER_EVENT_ERROR	   20
 /** @} */
 
 /**
@@ -76,6 +80,18 @@ typedef struct {
 } lwm2m_carrier_event_fota_start_t;
 
 /**
+ * @name LwM2M carrier library modem initialization results.
+ * @{
+ */
+/** Modem initialization successful. */
+#define LWM2M_CARRIER_MODEM_INIT_SUCCESS        0
+/** Modem firmware update successful. */
+#define LWM2M_CARRIER_MODEM_INIT_UPDATED        1
+/** Modem firmware update failed. */
+#define LWM2M_CARRIER_MODEM_INIT_UPDATE_FAILED  2
+/** @} */
+
+/**
  * @name LwM2M carrier library modem domain event types.
  * @{
  */
@@ -93,6 +109,16 @@ typedef struct {
 typedef uint32_t lwm2m_carrier_event_modem_domain_t;
 
 /**
+ * @name LwM2M carrier library app data container objects.
+ * @{
+ */
+/** Binary App Data Container Object. */
+#define LWM2M_CARRIER_OBJECT_BINARY_APP_DATA_CONTAINER 19
+/** App Data Container Object. */
+#define LWM2M_CARRIER_OBJECT_APP_DATA_CONTAINER        10250
+/** @} */
+
+/**
  * @brief LwM2M carrier library app data event structure.
  */
 typedef struct {
@@ -100,6 +126,13 @@ typedef struct {
 	const uint8_t *buffer;
 	/** Number of bytes received. */
 	size_t buffer_len;
+	/** Path to the resource or resource instance that received the data. The first value must
+	 *  be either \c LWM2M_CARRIER_OBJECT_BINARY_APP_DATA_CONTAINER or
+	 *  \c LWM2M_CARRIER_OBJECT_APP_DATA_CONTAINER
+	 */
+	uint16_t path[4];
+	/** Length of the path. */
+	uint8_t path_len;
 } lwm2m_carrier_event_app_data_t;
 
 /**
@@ -150,24 +183,20 @@ typedef struct {
 #define LWM2M_CARRIER_ERROR_LTE_LINK_DOWN_FAIL	2
 /** LwM2M carrier bootstrap failed. */
 #define LWM2M_CARRIER_ERROR_BOOTSTRAP		3
-/** Update package rejected. */
-#define LWM2M_CARRIER_ERROR_FOTA_PKG		4
-/** Protocol error. */
-#define LWM2M_CARRIER_ERROR_FOTA_PROTO		5
-/** Connection error. */
-#define LWM2M_CARRIER_ERROR_FOTA_CONN		6
-/** Connection lost. */
-#define LWM2M_CARRIER_ERROR_FOTA_CONN_LOST	7
-/** Update failed. */
-#define LWM2M_CARRIER_ERROR_FOTA_FAIL		8
+/**
+ * Firmware update failed. value:
+ * -ECONNREFUSED  Connection refused using available security tags.
+ * -ENOTSUP       Protocol not supported.
+ * -ENOMEM        Too many open connections.
+ * -EBADF         Incorrect firmware update version.
+ */
+#define LWM2M_CARRIER_ERROR_FOTA_FAIL		4
 /** Illegal object configuration detected. */
-#define LWM2M_CARRIER_ERROR_CONFIGURATION	9
+#define LWM2M_CARRIER_ERROR_CONFIGURATION	5
 /** LwM2M carrier init failed. */
-#define LWM2M_CARRIER_ERROR_INIT		10
-/** Internal error detected. */
-#define LWM2M_CARRIER_ERROR_INTERNAL		11
+#define LWM2M_CARRIER_ERROR_INIT		6
 /** LwM2M carrier run failed. */
-#define LWM2M_CARRIER_ERROR_RUN			12
+#define LWM2M_CARRIER_ERROR_RUN			7
 /** @} */
 
 /**
@@ -300,16 +329,19 @@ typedef struct {
  */
 #define LWM2M_CARRIER_GENERIC		0x00000001
 #define LWM2M_CARRIER_VERIZON		0x00000002
-#define LWM2M_CARRIER_ATT		0x00000004
+#define LWM2M_CARRIER_ATT		0x00000004  /* AT&T specific support is deprecated. */
 #define LWM2M_CARRIER_LG_UPLUS		0x00000008
 #define LWM2M_CARRIER_T_MOBILE		0x00000010
+#define LWM2M_CARRIER_SOFTBANK		0x00000020
 /** @} */
 
 /**
  * @brief Structure holding LwM2M carrier library initialization parameters.
  */
 typedef struct {
-	/** Configure enabled carriers. All carriers are enabled when no bits are set. */
+	/** Configure enabled carriers. All carriers except AT&T are enabled when no bits are set
+	 *  or if all bits are set.
+	 */
 	uint32_t carriers_enabled;
 	/** Disable bootstrap from Smartcard mode when this is enabled by the carrier. */
 	bool disable_bootstrap_from_smartcard;
@@ -346,23 +378,6 @@ typedef struct {
 } lwm2m_carrier_config_t;
 
 /**
- * @brief Initialize the LwM2M carrier library.
- *
- * @note This function will block until a SIM card is initialized by the modem. The library cannot
- *       proceed if, for example, no SIM is inserted, or a PIN code must be entered.
- *
- * @note The first time this function is called after a modem firmware update (FOTA), it may block
- *       for several seconds in order to complete the procedure.
- *
- * @retval  0      If initialization was successful.
- * @retval -EACCES If initialization failed due to an error in the OS integration layer.
- * @retval -ENOMEM If initialization failed due to insufficient OS resources.
- * @retval -EIO    If initialization failed due to a modem or AT command error.
- * @retval -EFAULT If initialization failed due to an internal error.
- */
-int lwm2m_carrier_init(void);
-
-/**
  * @brief LwM2M carrier library main function.
  *
  * @param[in] config Configuration parameters for the library. Optional.
@@ -374,11 +389,29 @@ int lwm2m_carrier_init(void);
  *       application has to make sure that the provided parameters are valid throughout the
  *       application lifetime (i.e. placed in static memory or in flash).
  *
- * @retval  0      If library main function exited at modem shutdown.
+ * @retval  0      If library main function exited on an unrecoverable error or a deferred reboot.
  * @retval -EINVAL If configuration parameters are invalid. See @c lwm2m_carrier_config_t
  * @retval -EFAULT If library failed due to an internal error.
  */
-int lwm2m_carrier_run(const lwm2m_carrier_config_t *config);
+int lwm2m_carrier_main(const lwm2m_carrier_config_t *config);
+
+/**
+ * @brief LwM2M carrier library modem initialization handler.
+ *
+ * @param[in] result Modem initialization result.
+ *
+ * @note This function must be called whenever the modem is initialized, as otherwise the device
+ *       management services will not be enabled.
+ */
+void lwm2m_carrier_on_modem_init(int result);
+
+/**
+ * @brief LwM2M carrier library modem shutdown handler.
+ *
+ * @note This function must be called whenever the modem is shut down, as it will shut down the
+ *       device management services.
+ */
+void lwm2m_carrier_on_modem_shutdown(void);
 
 /**
  * @brief Request the LwM2M carrier library to perform an action.
@@ -713,14 +746,39 @@ int lwm2m_carrier_velocity_set(int heading, float speed_h, float speed_v, float 
 			       float uncertainty_v);
 
 /**
- * @brief Schedule application data to be sent using the App Data Container object.
+ * @brief Schedule application data to be set using either the Binary App Data Container object
+ *        or the App Data Container object.
  *
- * @details This function sets the "UL data" (uplink) resource of this object to the desired value,
- *          which can then be read by, or reported to, the LwM2M server.
+ * @details This function sets the resource given by the path to the desired value. The resource
+ *          can then be read by, or reported to, the LwM2M server.
  *
- * @note The App Data Container object will not be initialized for every carrier.
+ * @note Both the Binary App Data Container object and the App Data Container object will not be
+ *       initialized for every carrier.
  *
- * @param[in]  buffer     Buffer containing the application data to be sent.
+ * @param[in]  path       The path of the resource or resource instance to be sent to. The path
+ *                        contains the object id, object instance id, resource id and resource
+ *                        instance id in order. The resource instance id is not needed for the
+ *                        App Data Container object.
+ * @param[in]  path_len   The length of the path. Must be 3 or 4.
+ * @param[in]  buffer     Buffer containing the application data to be sent. If this is set to null
+ *                        the resource instance is deleted instead when using the Binary App Data
+ *                        Container object.
+ * @param[in]  buffer_len Number of bytes in the buffer.
+ *
+ * @retval  0      If the resource has been set successfully.
+ * @retval -ENOENT If the object is not yet initialized.
+ * @retval -EINVAL If at least one input argument is incorrect.
+ * @retval -ENOMEM If there is not enough memory to copy the buffer contents to the resource model.
+ */
+int lwm2m_carrier_app_data_send(const uint16_t *path, uint16_t path_len, const uint8_t *buffer,
+				size_t buffer_len);
+
+/**
+ * @brief Send log data using the Event Log object.
+ *
+ * @note The Event Log object will not be initialized for every carrier.
+ *
+ * @param[in]  buffer     Buffer containing the log data to be set.
  * @param[in]  buffer_len Number of bytes in the buffer.
  *
  * @retval  0      If the resource has been set successfully.
@@ -728,7 +786,7 @@ int lwm2m_carrier_velocity_set(int heading, float speed_h, float speed_v, float 
  * @retval -EINVAL If the buffer is NULL.
  * @retval -ENOMEM If there is not enough memory to copy the buffer contents to the resource model.
  */
-int lwm2m_carrier_app_data_send(const uint8_t *buffer, size_t buffer_len);
+int lwm2m_carrier_log_data_set(const uint8_t *buffer, size_t buffer_len);
 
 /**
  *

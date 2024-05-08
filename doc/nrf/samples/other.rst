@@ -9,9 +9,5 @@ Other samples
    :glob:
 
    ../../../samples/*/README
-   ../../../samples/debug/*/README
    ../../../samples/ipc/*/README
-   ../../../samples/keys/*/README
    ../../../samples/mpsl/*/README
-   ../../../samples/peripheral/*/README
-   ../../../samples/sensor/*/README

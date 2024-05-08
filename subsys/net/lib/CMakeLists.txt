@@ -6,10 +6,11 @@
 
 # The nRF Cloud library folder contains multiple services
 if (DEFINED CONFIG_NRF_CLOUD_MQTT OR
-    DEFINED CONFIG_NRF_CLOUD_AGPS OR
+    DEFINED CONFIG_NRF_CLOUD_AGNSS OR
     DEFINED CONFIG_NRF_CLOUD_PGPS OR
     DEFINED CONFIG_NRF_CLOUD_REST OR
     DEFINED CONFIG_NRF_CLOUD_FOTA OR
+    DEFINED CONFIG_NRF_CLOUD_COAP OR
     DEFINED CONFIG_NRF_CLOUD_LOCATION)
         add_subdirectory(nrf_cloud)
 endif()
@@ -30,3 +31,5 @@ add_subdirectory_ifdef(CONFIG_LWM2M_CLIENT_UTILS lwm2m_client_utils)
 add_subdirectory_ifdef(CONFIG_WIFI_CREDENTIALS wifi_credentials)
 add_subdirectory_ifdef(CONFIG_WIFI_MGMT_EXT wifi_mgmt_ext)
 add_subdirectory_ifdef(CONFIG_MQTT_HELPER mqtt_helper)
+add_subdirectory_ifdef(CONFIG_NRF_PROVISIONING nrf_provisioning)
+add_subdirectory_ifdef(CONFIG_NRF_MCUMGR_SMP_CLIENT mcumgr_smp_client)

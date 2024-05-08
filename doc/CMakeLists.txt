@@ -20,10 +20,10 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE} COMPONENTS doc)
 #-------------------------------------------------------------------------------
 # Options
 
-set(SPHINXOPTS_DEFAULT "-j auto" CACHE STRING "Default Sphinx Options")
+set(SPHINXOPTS "-j auto -W --keep-going -T" CACHE STRING "Default Sphinx Options")
 set(SPHINXOPTS_EXTRA "" CACHE STRING "Extra Sphinx Options")
 
-separate_arguments(SPHINXOPTS_DEFAULT)
+separate_arguments(SPHINXOPTS)
 separate_arguments(SPHINXOPTS_EXTRA)
 
 #-------------------------------------------------------------------------------
@@ -54,9 +54,9 @@ file(MAKE_DIRECTORY ${KCONFIG_BINARY_DIR})
 #
 # Args:
 # - name: Docset name.
-# - DODGY: Enable/disable "dodgy" mode. If enabled, the ${SPHINXOPTS_EXTRA}
-#   option (used to enable things like -W) will not be passed to Sphinx. It can
-#   be useful for external docsets that are likely to generate build warnings.
+# - DODGY: Enable/disable "dodgy" mode. If enabled "-W" (warnings as errors)
+#   option will be disabled. It can be useful for external docsets that are
+#   likely to generate build warnings.
 #
 # This function configures multiple targets which can be used to build a docset.
 # The docset configuration (conf.py) is expected to be at the ${name} folder
@@ -85,8 +85,8 @@ function(add_docset name)
   set(DOCSET_CLEAN_DIRS ${DOCSET_BUILD_DIR};${DOCSET_HTML_DIR})
   set(DOCSET_ENV DOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE})
 
-  if(NOT ${DOCSET_DODGY})
-    set(EXTRA_ARGS ${SPHINXOPTS_EXTRA})
+  if(${DOCSET_DODGY})
+    list(REMOVE_ITEM SPHINXOPTS "-W" "--keep-going")
   endif()
 
   add_doc_target(
@@ -98,7 +98,8 @@ function(add_docset name)
       -c ${DOCSET_CFG_DIR}
       -d ${DOCSET_DOCTREE_DIR}
       -w ${DOCSET_BUILD_DIR}/inventory.log
-      ${SPHINXOPTS_DEFAULT}
+      ${SPHINXOPTS}
+      ${SPHINXOPTS_EXTRA}
       ${DOCSET_SRC_DIR}
       ${DOCSET_HTML_DIR}
     USES_TERMINAL
@@ -114,7 +115,8 @@ function(add_docset name)
       -c ${DOCSET_CFG_DIR}
       -d ${DOCSET_DOCTREE_DIR}
       -w ${DOCSET_BUILD_DIR}/html.log
-      ${SPHINXOPTS_DEFAULT}
+      ${SPHINXOPTS}
+      ${SPHINXOPTS_EXTRA}
       ${EXTRA_ARGS}
       ${DOCSET_SRC_DIR}
       ${DOCSET_HTML_DIR}
@@ -131,7 +133,8 @@ function(add_docset name)
       -c ${DOCSET_CFG_DIR}
       -d ${DOCSET_DOCTREE_DIR}
       -w ${DOCSET_BUILD_DIR}/linkcheck.log
-      ${SPHINXOPTS_DEFAULT}
+      ${SPHINXOPTS}
+      ${SPHINXOPTS_EXTRA}
       ${EXTRA_ARGS}
       ${DOCSET_SRC_DIR}
       ${DOCSET_BUILD_DIR}
@@ -210,49 +213,7 @@ add_dependencies(zephyr-all zephyr-devicetree)
 #-------------------------------------------------------------------------------
 # docset: nrf
 
-set(tools_version_files
-    ${NRF_BASE}/scripts/tools-versions-darwin.txt
-    ${NRF_BASE}/scripts/tools-versions-win10.txt
-    ${NRF_BASE}/scripts/tools-versions-linux.txt
-)
-
-set(pip_requirements_files
-    ${ZEPHYR_BASE}/scripts/requirements-base.txt
-    ${ZEPHYR_BASE}/scripts/requirements-doc.txt
-    ${ZEPHYR_MCUBOOT_MODULE_DIR}/scripts/requirements.txt
-    ${NRF_BASE}/scripts/requirements-base.txt
-    ${NRF_BASE}/scripts/requirements-doc.txt
-    ${NRF_BASE}/scripts/requirements-build.txt
-)
-
-string(REPLACE ";" "\\;" tools_files_escaped "${tools_version_files}")
-string(REPLACE ";" "\\;" pip_files_escaped "${pip_requirements_files}")
-
-set(NRF_DOC_DIR ${NRF_BASE}/doc/nrf)
-
-add_custom_command(
-  OUTPUT ${NRF_BINARY_DIR}/src/versions.txt
-  COMMAND ${CMAKE_COMMAND}
-    -DTOOLS_VERSION_FILES="${tools_files_escaped}"
-    -DPIP_REQUIREMENTS_FILES="${pip_files_escaped}"
-    -DVERSION_IN=${NRF_DOC_DIR}/versions.txt.in
-    -DVERSION_OUT=${NRF_BINARY_DIR}/src/versions.txt
-    -P ${NRF_BASE}/doc/update_versions.cmake
-  DEPENDS
-    ${NRF_DOC_DIR}/versions.txt.in
-    ${tools_version_files}
-    ${pip_requirements_files}
-)
-
-add_custom_target(
-  nrf-versions
-  DEPENDS
-    ${NRF_BINARY_DIR}/src/versions.txt
-)
-
 add_docset(nrf)
-add_dependencies(nrf nrf-versions)
-add_dependencies(nrf-all nrf-versions)
 
 #-------------------------------------------------------------------------------
 # docset: mcuboot
@@ -277,7 +238,7 @@ add_docset(matter DODGY)
 #-------------------------------------------------------------------------------
 # docset: nrfxlib
 
-add_docset(nrfxlib)
+add_docset(nrfxlib DODGY)
 
 #-------------------------------------------------------------------------------
 # docset: kconfig
@@ -291,6 +252,7 @@ add_custom_target(
   copy-extra-content
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_LIST_DIR}/_static/html/index.html ${HTML_DIR}
   COMMAND ${CMAKE_COMMAND} -E copy ${NRF_BASE}/doc/versions.json ${HTML_DIR}
+  COMMAND ${CMAKE_COMMAND} -E copy ${NRF_BASE}/doc/custom.properties ${HTML_DIR}
 )
 
 add_custom_target(

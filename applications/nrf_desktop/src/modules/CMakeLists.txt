@@ -28,8 +28,14 @@ target_sources_ifdef(CONFIG_DESKTOP_BLE_QOS_ENABLE
 target_sources_ifdef(CONFIG_DESKTOP_CONFIG_CHANNEL_ENABLE
 		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/info.c)
 
+target_sources_ifdef(CONFIG_DESKTOP_FACTORY_RESET
+		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/factory_reset.c)
+
 target_sources_ifdef(CONFIG_DESKTOP_FAST_PAIR
 		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fast_pair.c)
+
+target_sources_ifdef(CONFIG_DESKTOP_SWIFT_PAIR
+		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/swift_pair.c)
 
 target_sources_ifdef(CONFIG_DESKTOP_HID_FORWARD_ENABLE
 		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hid_forward.c)
@@ -54,6 +60,9 @@ target_sources_ifdef(CONFIG_DESKTOP_LED_STREAM_ENABLE
 
 target_sources_ifdef(CONFIG_DESKTOP_CONFIG_CHANNEL_DFU_ENABLE
 		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dfu.c)
+
+target_sources_ifdef(CONFIG_DESKTOP_DFU_MCUMGR_ENABLE
+		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dfu_mcumgr.c)
 
 target_sources_ifdef(CONFIG_DESKTOP_FN_KEYS_ENABLE
 		     app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fn_keys.c)

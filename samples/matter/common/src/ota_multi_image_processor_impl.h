@@ -6,22 +6,27 @@
 
 #pragma once
 
+#include "ota_image_processor_base_impl.h"
 #include <platform/nrfconnect/ExternalFlashManager.h>
 #include <platform/nrfconnect/OTAImageProcessorImpl.h>
 
 using namespace chip;
 using namespace chip::DeviceLayer;
 
-class OTAMultiImageProcessorImpl : public OTAImageProcessorImpl {
+class OTAMultiImageProcessorImpl : public OTAImageProcessorBaseImpl {
 public:
 	explicit OTAMultiImageProcessorImpl(ExternalFlashManager *flashHandler = nullptr)
-		: OTAImageProcessorImpl(flashHandler)
+		: OTAImageProcessorBaseImpl(flashHandler)
 	{
 	}
 
 	CHIP_ERROR PrepareDownload() override;
 	CHIP_ERROR ConfirmCurrentImage() override;
+	void SetImageConfirmed() { mImageConfirmed = true; }
 
 protected:
 	CHIP_ERROR PrepareMultiDownload();
+
+private:
+    bool mImageConfirmed = false;
 };

@@ -1,3 +1,9 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
 # MCUboot documentation build configuration file
 
 from pathlib import Path
@@ -18,7 +24,7 @@ ZEPHYR_BASE = utils.get_projdir("zephyr")
 
 project = "MCUboot"
 copyright = "2019-2023, Nordic Semiconductor"
-version = release = "1.9.99"
+version = release = "1.10.0"
 
 sys.path.insert(0, str(ZEPHYR_BASE / "doc" / "_extensions"))
 sys.path.insert(0, str(NRF_BASE / "doc" / "_extensions"))
@@ -27,7 +33,6 @@ extensions = [
     "zephyr.kconfig",
     "sphinx.ext.intersphinx",
     "recommonmark",
-    "ncs_cache",
     "zephyr.external_content"
 ]
 source_suffix = [".rst", ".md"]
@@ -47,8 +52,13 @@ html_static_path = [str(NRF_BASE / "doc" / "_static")]
 html_last_updated_fmt = "%b %d, %Y"
 html_show_sourcelink = True
 html_show_sphinx = False
+html_title = "MCUBoot (nRF Connect SDK)"
 
-html_theme_options = {"docset": "mcuboot", "docsets": utils.ALL_DOCSETS}
+html_theme_options = {
+    "docset": "mcuboot",
+    "docsets": utils.ALL_DOCSETS,
+    "subtitle": "nRF Connect SDK",
+}
 
 # Options for intersphinx ------------------------------------------------------
 
@@ -77,13 +87,7 @@ external_content_contents = [
     (MCUBOOT_BASE / "docs", "SubmittingPatches.md"),
 ]
 
-# Options for ncs_cache --------------------------------------------------------
-
-ncs_cache_docset = "mcuboot"
-ncs_cache_build_dir = utils.get_builddir()
-ncs_cache_config = NRF_BASE / "doc" / "cache.yml"
-ncs_cache_manifest = NRF_BASE / "west.yml"
-
 
 def setup(app):
-    utils.add_google_analytics(app)
+    utils.add_google_analytics(app, html_theme_options)
+    utils.add_announcement_banner(html_theme_options)

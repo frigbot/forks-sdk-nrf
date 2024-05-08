@@ -128,6 +128,10 @@ struct bt_mesh_light_temp_srv {
 	struct bt_mesh_lvl_srv lvl;
 	/** Model entry. */
 	struct bt_mesh_model *model;
+	/** Pointer to the corresponding CTL server, if it has one.
+	 *  Is set automatically by the CTL server.
+	 */
+	const struct bt_mesh_light_ctl_srv *ctl;
 	/** Publish parameters. */
 	struct bt_mesh_model_pub pub;
 	/** Transaction ID tracker for the set messages. */
@@ -135,10 +139,6 @@ struct bt_mesh_light_temp_srv {
 	/** Handler function structure. */
 	const struct bt_mesh_light_temp_srv_handlers *handlers;
 
-#if CONFIG_BT_SETTINGS
-	/** Storage timer */
-	struct k_work_delayable store_timer;
-#endif
 	/** Default light temperature and delta UV */
 	struct bt_mesh_light_temp dflt;
 	/** Current Temperature range. */

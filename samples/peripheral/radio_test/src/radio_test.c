@@ -23,7 +23,7 @@
 #include <helpers/nrfx_gppi.h>
 
 #if CONFIG_FEM
-#include "fem.h"
+#include "fem_al/fem_al.h"
 #endif /* CONFIG_FEM */
 
 /* IEEE 802.15.4 default frequency. */
@@ -203,6 +203,8 @@ static int fem_configure(bool rx, nrf_radio_mode_t mode,
 		printk("Failed to configure PA.\n");
 	}
 
+	fem_errata_25X(mode);
+
 	return err;
 }
 #endif /* CONFIG_FEM */
@@ -210,8 +212,7 @@ static int fem_configure(bool rx, nrf_radio_mode_t mode,
 static void radio_start(bool rx, bool force_egu)
 {
 	if (IS_ENABLED(CONFIG_FEM) || force_egu) {
-		nrf_egu_task_trigger(RADIO_TEST_EGU,
-				     nrf_egu_task_address_get(RADIO_TEST_EGU, RADIO_TEST_EGU_TASK));
+		nrf_egu_task_trigger(RADIO_TEST_EGU, RADIO_TEST_EGU_TASK);
 	} else {
 		nrf_radio_task_trigger(NRF_RADIO, rx ? NRF_RADIO_TASK_RXEN : NRF_RADIO_TASK_TXEN);
 	}
@@ -409,11 +410,39 @@ static void radio_disable(void)
 #endif /* CONFIG_FEM */
 }
 
+#if NRF53_ERRATA_117_PRESENT
+static void errata_117(nrf_radio_mode_t mode)
+{
+	if (!nrf53_errata_117()) {
+		return;
+	}
+
+	if ((mode == NRF_RADIO_MODE_NRF_2MBIT) ||
+	    (mode == NRF_RADIO_MODE_BLE_2MBIT) ||
+	    (mode == NRF_RADIO_MODE_IEEE802154_250KBIT)) {
+		*((volatile uint32_t *)0x41008588) = *((volatile uint32_t *)0x01FF0084);
+	} else {
+		*((volatile uint32_t *)0x41008588) = *((volatile uint32_t *)0x01FF0080);
+	}
+}
+#else
+static void errata_117(nrf_radio_mode_t mode)
+{
+	ARG_UNUSED(mode);
+}
+#endif /* NRF53_ERRATA_117_PRESENT */
+
+static void radio_mode_set(NRF_RADIO_Type *reg, nrf_radio_mode_t mode)
+{
+	errata_117(mode);
+	nrf_radio_mode_set(reg, mode);
+}
+
 static void radio_unmodulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t channel)
 {
 	radio_disable();
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
+	radio_mode_set(NRF_RADIO, mode);
 	nrf_radio_shorts_enable(NRF_RADIO, NRF_RADIO_SHORT_READY_START_MASK);
 	radio_power_set(mode, channel, txpower);
 
@@ -462,7 +491,7 @@ static void radio_modulated_tx_carrier(uint8_t mode, int8_t txpower, uint8_t cha
 		break;
 	}
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
+	radio_mode_set(NRF_RADIO, mode);
 	radio_power_set(mode, channel, txpower);
 
 	radio_channel_set(mode, channel);
@@ -483,7 +512,7 @@ static void radio_rx(uint8_t mode, uint8_t channel, enum transmit_pattern patter
 {
 	radio_disable();
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
+	radio_mode_set(NRF_RADIO, mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_START_MASK);
@@ -549,7 +578,7 @@ static void radio_modulated_tx_carrier_duty_cycle(uint8_t mode, int8_t txpower,
 	radio_disable();
 	generate_modulated_rf_packet(mode, pattern);
 
-	nrf_radio_mode_set(NRF_RADIO, mode);
+	radio_mode_set(NRF_RADIO, mode);
 	nrf_radio_shorts_enable(NRF_RADIO,
 				NRF_RADIO_SHORT_READY_START_MASK |
 				NRF_RADIO_SHORT_END_DISABLE_MASK);
@@ -745,7 +774,7 @@ static void timer_init(const struct radio_test_config *config)
 {
 	nrfx_err_t          err;
 	nrfx_timer_config_t timer_cfg = {
-		.frequency = NRF_TIMER_FREQ_1MHz,
+		.frequency = NRFX_MHZ_TO_HZ(1),
 		.mode      = NRF_TIMER_MODE_TIMER,
 		.bit_width = NRF_TIMER_BIT_WIDTH_24,
 		.p_context = (void *) config,

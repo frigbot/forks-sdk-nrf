@@ -42,12 +42,14 @@ enum nrf_cloud_http_status {
 	NRF_CLOUD_HTTP_STATUS_UNPROC_ENTITY = 422,
 };
 
-/** @brief nRF Cloud AGPS REST request types */
-enum nrf_cloud_rest_agps_req_type {
-	NRF_CLOUD_REST_AGPS_REQ_ASSISTANCE,
-	NRF_CLOUD_REST_AGPS_REQ_LOCATION,
-	NRF_CLOUD_REST_AGPS_REQ_CUSTOM,
-	NRF_CLOUD_REST_AGPS_REQ_UNSPECIFIED,
+/** @brief nRF Cloud AGNSS REST request types */
+enum nrf_cloud_rest_agnss_req_type {
+	/** Request all assistance data */
+	NRF_CLOUD_REST_AGNSS_REQ_ASSISTANCE,
+	/** Request only location (NRF_CLOUD_AGNSS_LOCATION) */
+	NRF_CLOUD_REST_AGNSS_REQ_LOCATION,
+	/** Request the data specified by nrf_modem_gnss_agnss_data_frame */
+	NRF_CLOUD_REST_AGNSS_REQ_CUSTOM
 };
 
 #define NRF_CLOUD_REST_TIMEOUT_NONE		(SYS_FOREVER_MS)
@@ -117,15 +119,23 @@ struct nrf_cloud_rest_context {
 struct nrf_cloud_rest_location_request {
 	/** Cellular network information used in request */
 	struct lte_lc_cells_info *cell_info;
-	/** Wi-Fi network information used in request */
+	/** Wi-Fi network information used in request.
+	 * The minimum number of access points required by nRF Cloud is
+	 * defined by NRF_CLOUD_LOCATION_WIFI_AP_CNT_MIN. Access points with
+	 * a local MAC address will not be included in the request.
+	 */
 	struct wifi_scan_info *wifi_info;
+	/** If true, nRF Cloud will not send the location data to the device
+	 * in the REST response body. The location will still be recorded in the cloud.
+	 */
+	bool disable_response;
 };
 
-/** @brief Data required for nRF Cloud Assisted GPS (A-GPS) request */
-struct nrf_cloud_rest_agps_request {
-	enum nrf_cloud_rest_agps_req_type type;
-	/** Required for custom request type */
-	struct nrf_modem_gnss_agps_data_frame *agps_req;
+/** @brief Data required for nRF Cloud Assisted GNSS (A-GNSS) request */
+struct nrf_cloud_rest_agnss_request {
+	enum nrf_cloud_rest_agnss_req_type type;
+	/** Required for custom request type (NRF_CLOUD_REST_AGNSS_REQ_CUSTOM) */
+	struct nrf_modem_gnss_agnss_data_frame *agnss_req;
 	/** Optional; provide network info or set to NULL. The cloud cannot
 	 * provide location assistance data if network info is NULL.
 	 */
@@ -138,34 +148,26 @@ struct nrf_cloud_rest_agps_request {
 	bool filtered;
 	/** Constrain the set of ephemerides to only those currently
 	 *  visible at or above the specified elevation threshold
-	 *  angle in degrees. Range is 0 to 90.
+	 *  angle in degrees. Range is 0 to 90.  Set to
+	 *  NRF_CLOUD_AGNSS_MASK_ANGLE_NONE to exclude from request.
 	 */
 	uint8_t mask_angle;
 };
 
-/** @brief nRF Cloud Assisted GPS (A-GPS) result */
-struct nrf_cloud_rest_agps_result {
-	/** User-provided buffer to hold AGPS data */
+/** @brief nRF Cloud Assisted GNSS (A-GNSS) result */
+struct nrf_cloud_rest_agnss_result {
+	/** User-provided buffer to hold AGNSS data */
 	char *buf;
 	/** Size of user-provided buffer */
 	size_t buf_sz;
-	/** Size of the AGPS data copied into buffer */
-	size_t agps_sz;
+	/** Size of the AGNSS data copied into buffer */
+	size_t agnss_sz;
 };
-
-/** Omit the prediction count from P-GPS request */
-#define NRF_CLOUD_REST_PGPS_REQ_NO_COUNT	0
-/** Omit the prediction validity period from P-GPS request */
-#define NRF_CLOUD_REST_PGPS_REQ_NO_INTERVAL	0
-/** Omit the GPS day from P-GPS request */
-#define NRF_CLOUD_REST_PGPS_REQ_NO_GPS_DAY	0
-/** Omit the GPS time of day from P-GPS request */
-#define NRF_CLOUD_REST_PGPS_REQ_NO_GPS_TOD	(-1)
 
 /** @brief Data required for nRF Cloud Predicted GPS (P-GPS) request */
 struct nrf_cloud_rest_pgps_request {
 	/** Data to be included in the P-GPS request. To omit an item
-	 * use the appropriate `NRF_CLOUD_REST_PGPS_REQ_NO_` define.
+	 * use the appropriate `NRF_CLOUD_PGPS_REQ_NO_` define.
 	 */
 	const struct gps_pgps_request *pgps_req;
 };
@@ -187,34 +189,39 @@ int nrf_cloud_rest_location_get(struct nrf_cloud_rest_context *const rest_ctx,
 	struct nrf_cloud_rest_location_request const *const request,
 	struct nrf_cloud_location_result *const result);
 
+#if defined(CONFIG_NRF_CLOUD_AGNSS)
 /**
- * @brief nRF Cloud Assisted GPS (A-GPS) data request.
+ * @brief nRF Cloud Assisted GNSS (A-GNSS) data request.
  *
  * @param[in,out] rest_ctx Context for communicating with nRF Cloud's REST API.
  * @param[in]     request Data to be provided in API call.
- * @param[in,out] result Optional; Additional buffer for A-GPS data. This is
- *                       necessary when the A-GPS data from the cloud is larger
+ * @param[in,out] result Optional; Additional buffer for A-GNSS data. This is
+ *                       necessary when the A-GNSS data from the cloud is larger
  *                       than the fragment size specified by
  *                       rest_ctx->fragment_size.
  *
  * @retval 0 If successful.
- *           If result is NULL and the A-GPS data is larger than the fragment
+ *           If result is NULL and the A-GNSS data is larger than the fragment
  *           size specified by rest_ctx->fragment_size, a positive value is
  *           returned, which indicates the size (in bytes) of the necessary
  *           result buffer.
  *           Otherwise, a (negative) error code is returned:
  *           - -EINVAL will be returned, and an error message printed, if invalid parameters
  *		are given.
+ *           - -ENOENT will be returned if there was no A-GNSS data requested for the specified
+ *		request type.
  *           - -ENOBUFS will be returned, and an error message printed, if there is not enough
- *             buffer space to store retrieved AGPS data.
+ *             buffer space to store retrieved AGNSS data.
  *           - See @verbatim embed:rst:inline :ref:`nrf_cloud_rest_failure` @endverbatim for all
  *             other possible error codes.
  *
  */
-int nrf_cloud_rest_agps_data_get(struct nrf_cloud_rest_context *const rest_ctx,
-	struct nrf_cloud_rest_agps_request const *const request,
-	struct nrf_cloud_rest_agps_result *const result);
+int nrf_cloud_rest_agnss_data_get(struct nrf_cloud_rest_context *const rest_ctx,
+	struct nrf_cloud_rest_agnss_request const *const request,
+	struct nrf_cloud_rest_agnss_result *const result);
+#endif /* CONFIG_NRF_CLOUD_AGNSS */
 
+#if defined(CONFIG_NRF_CLOUD_PGPS)
 /**
  * @brief nRF Cloud Predicted GPS (P-GPS) data request.
  *
@@ -230,6 +237,7 @@ int nrf_cloud_rest_agps_data_get(struct nrf_cloud_rest_context *const rest_ctx,
  */
 int nrf_cloud_rest_pgps_data_get(struct nrf_cloud_rest_context *const rest_ctx,
 	struct nrf_cloud_rest_pgps_request const *const request);
+#endif
 
 /**
  * @brief Requests nRF Cloud FOTA job info for the specified device.
@@ -387,8 +395,7 @@ int nrf_cloud_rest_send_location(struct nrf_cloud_rest_context *const rest_ctx,
 
 /**
  * @brief Send the device status to nRF Cloud as a device message. In addition to standard
- * message storage, the data (excluding nrf_cloud_svc_info) will also be stored in the
- * device's shadow.
+ * message storage, the data will also be stored in the device's shadow.
  *
  * @param[in,out] rest_ctx Context for communicating with nRF Cloud's REST API.
  * @param[in]     device_id Null-terminated, unique device ID registered with nRF Cloud.

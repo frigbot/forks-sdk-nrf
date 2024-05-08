@@ -38,13 +38,7 @@ static struct ping_argv_t {
 	uint16_t pdn;
 } ping_argv;
 
-/* global variable defined in different files */
-extern struct k_work_q slm_work_q;
-
 static struct k_work ping_work;
-
-/* global variable defined in different files */
-extern struct at_param_list at_param_list;
 
 static inline void setip(uint8_t *buffer, uint32_t ipaddr)
 {
@@ -126,6 +120,7 @@ static uint32_t send_ping_wait_reply(void)
 	int plseqnr;
 	int ret;
 	const uint16_t icmp_hdr_len = ICMP_HDR_LEN;
+	struct timeval tv;
 
 	if (si->ai_family == AF_INET) {
 		/* Generate IPv4 ICMP EchoReq */
@@ -252,16 +247,13 @@ static uint32_t send_ping_wait_reply(void)
 	/* Use non-primary PDN if specified, fail if cannot proceed
 	 */
 	if (ping_argv.pdn != 0) {
-		size_t len;
-		struct ifreq ifr = { 0 };
+		int pdn = ping_argv.pdn;
 
-		snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "pdn%d", ping_argv.pdn);
-		len = strlen(ifr.ifr_name);
-		if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, &ifr, len) < 0) {
-			LOG_WRN("Unable to set socket SO_BINDTODEVICE, abort");
+		if (setsockopt(fd, SOL_SOCKET, SO_BINDTOPDN, &pdn, sizeof(int))) {
+			LOG_WRN("Unable to set socket SO_BINDTOPDN, abort");
 			goto close_end;
 		}
-		LOG_DBG("Use PDN: %d", ping_argv.pdn);
+		LOG_DBG("Use PDN: %d", pdn);
 	} else {
 		LOG_DBG("Use PDN: 0");
 	}
@@ -269,10 +261,8 @@ static uint32_t send_ping_wait_reply(void)
 	/* We have a blocking socket and we do not want to block for
 	 * a long for sending. Thus, let's set the timeout:
 	 */
-	struct timeval tv = {
-		.tv_sec = (ping_argv.waitms / 1000),
-		.tv_usec = (ping_argv.waitms % 1000) * 1000,
-	};
+	tv.tv_sec = (ping_argv.waitms / 1000);
+	tv.tv_usec = (ping_argv.waitms % 1000) * 1000;
 
 	if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&tv,
 		       sizeof(struct timeval)) < 0) {
@@ -527,11 +517,7 @@ static int ping_test_handler(const char *target)
 	return 0;
 }
 
-/**@brief handle AT#XPING commands
- *  AT#XPING=<url>,<length>,<timeout>[,<count>[,<interval>[,<pdn>]]]
- *  AT#XPING? READ command not supported
- *  AT#XPING=? TEST command not supported
- */
+/* Handles AT#XPING command. */
 int handle_at_icmp_ping(enum at_cmd_type cmd_type)
 {
 	int err = -EINVAL;
@@ -540,35 +526,36 @@ int handle_at_icmp_ping(enum at_cmd_type cmd_type)
 
 	switch (cmd_type) {
 	case AT_CMD_TYPE_SET_COMMAND:
-		err = util_string_get(&at_param_list, 1, target, &size);
+		err = util_string_get(&slm_at_param_list, 1, target, &size);
 		if (err < 0) {
 			return err;
 		}
-		err = at_params_unsigned_short_get(&at_param_list, 2, &ping_argv.len);
+		err = at_params_unsigned_short_get(&slm_at_param_list, 2, &ping_argv.len);
 		if (err < 0) {
 			return err;
 		}
-		err = at_params_unsigned_short_get(&at_param_list, 3, &ping_argv.waitms);
+		err = at_params_unsigned_short_get(&slm_at_param_list, 3, &ping_argv.waitms);
 		if (err < 0) {
 			return err;
 		}
 		ping_argv.count = 1; /* default 1 */
-		if (at_params_valid_count_get(&at_param_list) > 4) {
-			err = at_params_unsigned_short_get(&at_param_list, 4, &ping_argv.count);
+		if (at_params_valid_count_get(&slm_at_param_list) > 4) {
+			err = at_params_unsigned_short_get(&slm_at_param_list, 4, &ping_argv.count);
 			if (err < 0) {
 				return err;
 			};
 		}
 		ping_argv.interval = 1000; /* default 1s */
-		if (at_params_valid_count_get(&at_param_list) > 5) {
-			err = at_params_unsigned_short_get(&at_param_list, 5, &ping_argv.interval);
+		if (at_params_valid_count_get(&slm_at_param_list) > 5) {
+			err = at_params_unsigned_short_get(
+				&slm_at_param_list, 5, &ping_argv.interval);
 			if (err < 0) {
 				return err;
 			};
 		}
 		ping_argv.pdn = 0; /* default 0 primary PDN */
-		if (at_params_valid_count_get(&at_param_list) > 6) {
-			err = at_params_unsigned_short_get(&at_param_list, 6, &ping_argv.pdn);
+		if (at_params_valid_count_get(&slm_at_param_list) > 6) {
+			err = at_params_unsigned_short_get(&slm_at_param_list, 6, &ping_argv.pdn);
 			if (err < 0) {
 				return err;
 			};

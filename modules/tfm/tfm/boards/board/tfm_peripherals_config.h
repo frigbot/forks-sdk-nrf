@@ -154,25 +154,22 @@ extern "C" {
 
 #define TFM_PERIPHERAL_VMC_SECURE            CONFIG_NRF_VMC_SECURE
 
-#if defined(CONFIG_NRF_GPIO1_PIN_MASK_SECURE)
+#if defined(CONFIG_NRF_GPIO0_PIN_MASK_SECURE)
 #define TFM_PERIPHERAL_GPIO0_PIN_MASK_SECURE CONFIG_NRF_GPIO0_PIN_MASK_SECURE
+#if ENABLE_TRACE
+#if CONFIG_NRF_GPIO0_PIN_MASK_SECURE & (TAD_PSEL_TRACECLK_PIN_Msk | TAD_PSEL_TRACEDATA0_PIN_Msk \
+	| TAD_PSEL_TRACEDATA1_PIN_Msk | TAD_PSEL_TRACEDATA2_PIN_Msk | TAD_PSEL_TRACEDATA3_PIN_Msk)
+#error Trace pins must be configured as non-secure.
+#endif
+#endif
 #endif
 
 #if defined(CONFIG_NRF_GPIO1_PIN_MASK_SECURE)
 #define TFM_PERIPHERAL_GPIO1_PIN_MASK_SECURE CONFIG_NRF_GPIO1_PIN_MASK_SECURE
 #endif
 
-/* TODO: Update to TFM_PERIPHERAL_DPPI_CHANNEL_MASK_SECURE once this is renamed in TF-M. */
 #if defined(CONFIG_NRF_DPPI_CHANNEL_MASK_SECURE)
-#define TFM_PERIPHERAL_DPPI_CHANNEL_SECURE_MASK CONFIG_NRF_DPPI_CHANNEL_MASK_SECURE
-#endif
-
-#if defined(NRF5340_XXAA_APPLICATION)
-    #include <tfm_peripherals_config_nrf5340_application.h>
-#elif defined(NRF9160_XXAA)
-    #include <tfm_peripherals_config_nrf9160.h>
-#else
-    #error "Unknown device."
+#define TFM_PERIPHERAL_DPPI_CHANNEL_MASK_SECURE CONFIG_NRF_DPPI_CHANNEL_MASK_SECURE
 #endif
 
 #ifdef __cplusplus

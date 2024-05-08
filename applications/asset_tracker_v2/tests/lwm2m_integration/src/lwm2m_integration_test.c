@@ -35,7 +35,7 @@ static void cloud_wrap_event_handler(const struct cloud_wrap_event *const evt)
 static lwm2m_ctx_event_cb_t rd_client_callback;
 static lwm2m_engine_execute_cb_t engine_execute_cb;
 static modem_mode_cb_t modem_mode_change_cb;
-static lwm2m_firmware_get_update_state_cb_t firmware_update_state_cb;
+static lwm2m_firmware_event_cb_t firmware_update_event_cb;
 
 /* Forward declarations. */
 static int register_exec_callback_stub(const struct lwm2m_obj_path *path,
@@ -45,16 +45,21 @@ static int init_security_callback_stub(struct lwm2m_ctx *ctx,
 				       char *endpoint,
 				       struct modem_mode_change *mmode,
 				       int no_of_calls);
-static void set_update_state_callback_stub(lwm2m_firmware_get_update_state_cb_t cb,
+static int init_firmware_cb_stub(lwm2m_firmware_event_cb_t cb,
 					   int no_of_calls);
 
+/* It is required to be added to each test. That is because unity's
+ * main may return nonzero, while zephyr's main currently must
+ * return 0 in all cases (other values are reserved).
+ */
 extern int unity_main(void);
 
 /* Setup and teardown functions. */
 void setUp(void)
 {
 	__cmock_lwm2m_init_image_ExpectAndReturn(0);
-	__cmock_lwm2m_init_firmware_ExpectAndReturn(0);
+	__cmock_lwm2m_init_firmware_cb_ExpectAnyArgsAndReturn(0);
+	__cmock_lwm2m_init_firmware_cb_AddCallback(&init_firmware_cb_stub);
 	__cmock_lwm2m_init_security_ExpectAndReturn(&client,
 						   endpoint_name,
 						   NULL,
@@ -63,13 +68,10 @@ void setUp(void)
 
 	__cmock_lwm2m_init_security_AddCallback(&init_security_callback_stub);
 
-	__cmock_lwm2m_firmware_set_update_state_cb_ExpectAnyArgs();
-
 	__cmock_lwm2m_register_exec_callback_ExpectAndReturn(&LWM2M_OBJ(3, 0, 4), NULL, 0);
 	__cmock_lwm2m_register_exec_callback_IgnoreArg_cb();
 
 	__cmock_lwm2m_register_exec_callback_AddCallback(&register_exec_callback_stub);
-	__cmock_lwm2m_firmware_set_update_state_cb_AddCallback(&set_update_state_callback_stub);
 
 	TEST_ASSERT_EQUAL(0, cloud_wrap_init(cloud_wrap_event_handler));
 }
@@ -118,9 +120,12 @@ static int init_security_callback_stub(struct lwm2m_ctx *ctx,
 	return 0;
 }
 
-void set_update_state_callback_stub(lwm2m_firmware_get_update_state_cb_t cb, int no_of_calls)
+int init_firmware_cb_stub(lwm2m_firmware_event_cb_t cb, int no_of_calls)
 {
-	firmware_update_state_cb = cb;
+	ARG_UNUSED(no_of_calls);
+
+	firmware_update_event_cb = cb;
+	return 0;
 }
 
 /* Tests */
@@ -177,7 +182,7 @@ void test_lwm2m_integration_data_send(void)
 		LWM2M_OBJ(4, 0, 7),
 	};
 
-	__cmock_lwm2m_send_ExpectAndReturn(&client, paths, PATH_LEN, true, 0);
+	__cmock_lwm2m_send_cb_ExpectAndReturn(&client, paths, PATH_LEN, NULL, 0);
 
 	TEST_ASSERT_EQUAL(0, cloud_wrap_data_send(NULL, PATH_LEN, true, 0, paths));
 }
@@ -193,23 +198,23 @@ void test_lwm2m_integration_ui_send(void)
 		LWM2M_OBJ(4, 0, 7),
 	};
 
-	__cmock_lwm2m_send_ExpectAndReturn(&client, paths, PATH_LEN, true, 0);
+	__cmock_lwm2m_send_cb_ExpectAndReturn(&client, paths, PATH_LEN, NULL, 0);
 
 	TEST_ASSERT_EQUAL(0, cloud_wrap_ui_send(NULL, PATH_LEN, true, 0, paths));
 }
 
 void test_lwm2m_integration_neighbor_cells_send(void)
 {
-	__cmock_location_assistance_ground_fix_request_send_ExpectAndReturn(&client, true, 0);
+	__cmock_location_assistance_ground_fix_request_send_ExpectAndReturn(&client, 0);
 
 	TEST_ASSERT_EQUAL(0, cloud_wrap_cloud_location_send(NULL, 0, true, 0));
 }
 
-void test_lwm2m_integration_agps_request_send(void)
+void test_lwm2m_integration_agnss_request_send(void)
 {
-	__cmock_location_assistance_agps_request_send_ExpectAndReturn(&client, true, 0);
+	__cmock_location_assistance_agnss_request_send_ExpectAndReturn(&client, 0);
 
-	TEST_ASSERT_EQUAL(0, cloud_wrap_agps_request_send(NULL, 0, true, 0));
+	TEST_ASSERT_EQUAL(0, cloud_wrap_agnss_request_send(NULL, 0, true, 0));
 }
 
 /* Tests for APIs that are not supported by the lwm2m integration layer (uut), lwm2m_integration.c.
@@ -233,7 +238,7 @@ void test_lwm2m_integration_batch_send(void)
 
 void test_lwm2m_integration_pgps_request_send(void)
 {
-	__cmock_location_assistance_pgps_request_send_ExpectAndReturn(&client, true, 0);
+	__cmock_location_assistance_pgps_request_send_ExpectAndReturn(&client, 0);
 
 	TEST_ASSERT_EQUAL(0, cloud_wrap_pgps_request_send(NULL, 0, true, 0));
 }
@@ -327,87 +332,61 @@ void test_lwm2m_integration_network_error(void)
 	TEST_ASSERT_EQUAL(CLOUD_WRAP_EVT_ERROR, last_cb_type);
 }
 
-void test_lwm2m_integration_fota_result_get(void)
-{
-	/* Expect the FOTA update result to be retrieved for any update in FOTA state. */
-	__cmock_lwm2m_get_u8_ExpectAndReturn(&LWM2M_OBJ(5, 0, 5), NULL, 0);
-	__cmock_lwm2m_get_u8_IgnoreArg_value();
-
-	__cmock_lwm2m_get_u8_ExpectAndReturn(&LWM2M_OBJ(5, 0, 5), NULL, 0);
-	__cmock_lwm2m_get_u8_IgnoreArg_value();
-
-	__cmock_lwm2m_get_u8_ExpectAndReturn(&LWM2M_OBJ(5, 0, 5), NULL, 0);
-	__cmock_lwm2m_get_u8_IgnoreArg_value();
-
-	__cmock_lwm2m_get_u8_ExpectAndReturn(&LWM2M_OBJ(5, 0, 5), NULL, 0);
-	__cmock_lwm2m_get_u8_IgnoreArg_value();
-	__cmock_lwm2m_firmware_set_update_state_cb_Expect(NULL);
-
-	firmware_update_state_cb(STATE_IDLE);
-	firmware_update_state_cb(STATE_DOWNLOADING);
-	firmware_update_state_cb(STATE_DOWNLOADED);
-	firmware_update_state_cb(STATE_UPDATING);
-}
-
-void test_lwm2m_integration_fota_result_get_error(void)
-{
-	__cmock_lwm2m_get_u8_ExpectAnyArgsAndReturn(-1);
-
-	firmware_update_state_cb(STATE_DOWNLOADING);
-	TEST_ASSERT_EQUAL(CLOUD_WRAP_EVT_ERROR, last_cb_type);
-}
-
 void test_lwm2m_integration_fota_error(void)
 {
-	__cmock_lwm2m_get_u8_IgnoreAndReturn(0);
+	struct lwm2m_fota_event event = {
+		.id = LWM2M_FOTA_UPDATE_ERROR,
+		.failure.obj_inst_id = 0,
+		.failure.update_failure = 10
+	};
 
 	/* Expect an error event to be returned if FOTA state reverts to STATE_IDLE. */
-	firmware_update_state_cb(STATE_IDLE);
+	firmware_update_event_cb(&event);
 	TEST_ASSERT_EQUAL(CLOUD_WRAP_EVT_FOTA_ERROR, last_cb_type);
 }
 
 void test_lwm2m_integration_fota_downloading(void)
 {
-	__cmock_lwm2m_get_u8_IgnoreAndReturn(0);
+	struct lwm2m_fota_event event = {
+		.id = LWM2M_FOTA_DOWNLOAD_START,
+		.download_start.obj_inst_id = 0
+	};
 
-	firmware_update_state_cb(STATE_DOWNLOADING);
+	firmware_update_event_cb(&event);
 	TEST_ASSERT_EQUAL(CLOUD_WRAP_EVT_FOTA_START, last_cb_type);
 }
 
 void test_lwm2m_integration_fota_downloaded(void)
 {
-	__cmock_lwm2m_get_u8_IgnoreAndReturn(0);
+	struct lwm2m_fota_event event = {
+		.id = LWM2M_FOTA_DOWNLOAD_FINISHED,
+		.download_ready.obj_inst_id = 0
+	};
 
 	/* Expect no event to be called by setting last_cb_type to UINT8_MAX and verifying that
 	 * the value has not changed after the state change.
 	 */
 	last_cb_type = UINT8_MAX;
 
-	firmware_update_state_cb(STATE_DOWNLOADED);
+	firmware_update_event_cb(&event);
 	TEST_ASSERT_EQUAL(UINT8_MAX, last_cb_type);
 }
 
-void test_lwm2m_integration_fota_updating(void)
+void test_lwm2m_integration_fota_update_image_req(void)
 {
-	__cmock_lwm2m_get_u8_IgnoreAndReturn(0);
-	__cmock_lwm2m_firmware_set_update_state_cb_Expect(NULL);
+	struct lwm2m_fota_event event = {
+		.id = LWM2M_FOTA_UPDATE_IMAGE_REQ,
+		.update_req.obj_inst_id = 0
+	};
 
 	last_cb_type = UINT8_MAX;
 
-	firmware_update_state_cb(STATE_UPDATING);
+	firmware_update_event_cb(&event);
 	TEST_ASSERT_EQUAL(UINT8_MAX, last_cb_type);
 }
 
-void test_lwm2m_integration_fota_unexpected_event(void)
-{
-	__cmock_lwm2m_get_u8_IgnoreAndReturn(0);
-
-	/* Trigger an event update with an unknown event type. */
-	firmware_update_state_cb(UINT8_MAX);
-	TEST_ASSERT_EQUAL(CLOUD_WRAP_EVT_FOTA_ERROR, last_cb_type);
-}
-
-void main(void)
+int main(void)
 {
 	(void)unity_main();
+	return 0;
 }

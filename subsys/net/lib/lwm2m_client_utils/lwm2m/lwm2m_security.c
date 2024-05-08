@@ -13,8 +13,10 @@
 #include <modem/modem_key_mgmt.h>
 #include <modem/lte_lc.h>
 #include <zephyr/settings/settings.h>
-
+#include <zephyr/net/socket.h>
+#include <zephyr/net/socket_ncs.h>
 #include <zephyr/logging/log.h>
+
 LOG_MODULE_REGISTER(lwm2m_security, CONFIG_LWM2M_CLIENT_UTILS_LOG_LEVEL);
 
 /* LWM2M_OBJECT_SECURITY_ID */
@@ -36,6 +38,7 @@ enum security_mode {
 };
 
 static struct modem_mode_change mm;
+static bool purge_sessions;
 
 int lwm2m_modem_mode_cb(enum lte_lc_func_mode new_mode, void *user_data)
 {
@@ -265,6 +268,7 @@ static int load_credentials_to_modem(struct lwm2m_ctx *ctx)
 
 	if (ctx->bootstrap_mode) {
 		ctx->tls_tag = CONFIG_LWM2M_CLIENT_UTILS_BOOTSTRAP_TLS_TAG;
+		purge_sessions = true;
 	} else {
 		ctx->tls_tag = CONFIG_LWM2M_CLIENT_UTILS_SERVER_TLS_TAG;
 	}
@@ -335,6 +339,8 @@ static int load_credentials_to_modem(struct lwm2m_ctx *ctx)
 	if (!have_permanently_stored_keys) {
 		have_permanently_stored_keys = true;
 	}
+
+	purge_sessions = true;
 
 out:
 	LOG_INF("Requesting LTE and GNSS online");
@@ -581,7 +587,14 @@ static int init_default_security_obj(struct lwm2m_ctx *ctx, char *endpoint)
 
 	/* Security Mode, default to PSK with key written by application */
 	if (IS_ENABLED(CONFIG_LWM2M_DTLS_SUPPORT)) {
+		/* At minimum, we are storing endpoint name */
+		/* This works on PSK where credentials are already in modem */
 		lwm2m_security_set_psk(0, NULL, 0, false, endpoint);
+		/* But if modem has certificates, change the mode to match */
+		if (modem_has_credentials(ctx->tls_tag, SEC_MODE_CERTIFICATE)) {
+			lwm2m_set_u8(&LWM2M_OBJ(LWM2M_OBJECT_SECURITY_ID, 0, SECURITY_MODE_ID),
+				     SEC_MODE_CERTIFICATE);
+		}
 	} else {
 		lwm2m_set_u8(&LWM2M_OBJ(LWM2M_OBJECT_SECURITY_ID, 0, SECURITY_MODE_ID),
 			     SEC_MODE_NO_SEC);
@@ -671,6 +684,36 @@ int lwm2m_security_set_certificate(uint16_t sec_obj_inst, const void *cert, int 
 				  ca_len, private_key, key_len);
 }
 
+static int set_socketoptions(struct lwm2m_ctx *ctx)
+{
+	int ret;
+
+	if (purge_sessions) {
+		int purge = 1;
+
+		ret = zsock_setsockopt(ctx->sock_fd, SOL_TLS, NRF_SO_SEC_SESSION_CACHE_PURGE,
+				       &purge, sizeof(purge));
+		if (ret) {
+			/* This is non-fatal, so just log it and continue */
+			LOG_ERR("Failed to purge DTLS session cache");
+		}
+		purge_sessions = false;
+	}
+
+	if (IS_ENABLED(CONFIG_LWM2M_CLIENT_UTILS_DTLS_CID)) {
+		/* Enable CID */
+		uint32_t dtls_cid = NRF_SO_SEC_DTLS_CID_ENABLED;
+
+		ret = zsock_setsockopt(ctx->sock_fd, SOL_TLS, TLS_DTLS_CID, &dtls_cid,
+				       sizeof(dtls_cid));
+		if (ret) {
+			ret = -errno;
+			LOG_ERR("Failed to enable TLS_DTLS_CID: %d", ret);
+		}
+	}
+	return lwm2m_set_default_sockopt(ctx);
+}
+
 int lwm2m_init_security(struct lwm2m_ctx *ctx, char *endpoint, struct modem_mode_change *mmode)
 {
 #if defined(CONFIG_LWM2M_DTLS_SUPPORT)
@@ -678,6 +721,7 @@ int lwm2m_init_security(struct lwm2m_ctx *ctx, char *endpoint, struct modem_mode
 	have_permanently_stored_keys = false;
 	bootstrap_settings_loaded_inst = -1;
 	loading_in_progress = false;
+	purge_sessions = true;
 
 	/* Restore the default if not a callback function */
 	if (!mmode) {
@@ -692,6 +736,8 @@ int lwm2m_init_security(struct lwm2m_ctx *ctx, char *endpoint, struct modem_mode
 			       CONFIG_LWM2M_CLIENT_UTILS_BOOTSTRAP_TLS_TAG :
 				     CONFIG_LWM2M_CLIENT_UTILS_SERVER_TLS_TAG;
 	ctx->load_credentials = load_credentials_to_modem;
+	ctx->set_socketoptions = set_socketoptions;
+
 
 #if defined(CONFIG_LWM2M_RD_CLIENT_SUPPORT_BOOTSTRAP)
 	/* If bootstrap is enabled, we should delete the default server instance,

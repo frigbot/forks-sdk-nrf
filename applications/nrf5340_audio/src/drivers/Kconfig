@@ -13,7 +13,7 @@ config CS47L63_THREAD_PRIO
 	int "Priority for CS47L63 thread"
 	default 5
 	help
-		This is a preemptible thread
+	  This is a preemptible thread
 
 endmenu # Thread priorities
 
@@ -34,5 +34,4 @@ module-str = cs47l63
 source "subsys/logging/Kconfig.template.log_config"
 
 endmenu # Log levels
-
 endmenu # Drivers

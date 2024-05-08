@@ -8,15 +8,13 @@
 
 #include "battery.h"
 #include "buzzer.h"
+#include "fabric_table_delegate.h"
 #include "led_widget.h"
 #include <platform/CHIPDeviceLayer.h>
 
 #include <DeviceInfoProviderImpl.h>
 
-#include <app-common/zap-generated/attribute-id.h>
-#include <app-common/zap-generated/attribute-type.h>
 #include <app-common/zap-generated/attributes/Accessors.h>
-#include <app-common/zap-generated/cluster-id.h>
 #include <app-common/zap-generated/cluster-objects.h>
 #include <app/clusters/ota-requestor/OTATestEventTriggerDelegate.h>
 #include <app/server/OnboardingCodesUtil.h>
@@ -25,14 +23,23 @@
 #include <credentials/DeviceAttestationCredsProvider.h>
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 
+#ifdef CONFIG_CHIP_WIFI
+#include <app/clusters/network-commissioning/network-commissioning.h>
+#include <platform/nrfconnect/wifi/NrfWiFiDriver.h>
+#endif
+
 #ifdef CONFIG_CHIP_OTA_REQUESTOR
 #include "ota_util.h"
 #endif
 
+#ifdef CONFIG_CHIP_ICD_SUBSCRIPTION_HANDLING
+#include <app/InteractionModelEngine.h>
+#endif
+
 #include <dk_buttons_and_leds.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
 using namespace ::chip;
 using namespace ::chip::Credentials;
@@ -93,8 +100,8 @@ LEDWidget sRedLED;
 LEDWidget sGreenLED;
 LEDWidget sBlueLED;
 
-bool sIsThreadProvisioned;
-bool sIsThreadEnabled;
+bool sIsNetworkProvisioned;
+bool sIsNetworkEnabled;
 bool sIsBleAdvertisingEnabled;
 bool sHaveBLEConnections;
 
@@ -120,6 +127,11 @@ const device *sBme688SensorDev = DEVICE_DT_GET_ONE(bosch_bme680);
 
 AppTask AppTask::sAppTask;
 
+#ifdef CONFIG_CHIP_WIFI
+app::Clusters::NetworkCommissioning::Instance
+	sWiFiCommissioningInstance(0, &(NetworkCommissioning::NrfWiFiDriver::Instance()));
+#endif
+
 CHIP_ERROR AppTask::Init()
 {
 	/* Initialize CHIP stack */
@@ -137,6 +149,7 @@ CHIP_ERROR AppTask::Init()
 		return err;
 	}
 
+#if defined(CONFIG_NET_L2_OPENTHREAD)
 	err = ThreadStackMgr().InitThreadStack();
 	if (err != CHIP_NO_ERROR) {
 		LOG_ERR("ThreadStackMgr().InitThreadStack() failed");
@@ -152,6 +165,12 @@ CHIP_ERROR AppTask::Init()
 		LOG_ERR("ConnectivityMgr().SetThreadDeviceType() failed");
 		return err;
 	}
+
+#elif defined(CONFIG_CHIP_WIFI)
+	sWiFiCommissioningInstance.Init();
+#else
+	return CHIP_ERROR_INTERNAL;
+#endif /* CONFIG_NET_L2_OPENTHREAD */
 
 	/* Initialize RGB LED */
 	LEDWidget::InitGpio();
@@ -199,6 +218,18 @@ CHIP_ERROR AppTask::Init()
 		return chip::System::MapErrorZephyr(ret);
 	}
 
+#ifdef CONFIG_CHIP_OTA_REQUESTOR
+	/* OTA image confirmation must be done before the factory data init. */
+	OtaConfirmNewImage();
+#endif
+
+#ifdef CONFIG_MCUMGR_TRANSPORT_BT
+	/* Initialize DFU over SMP */
+	GetDFUOverSMP().Init();
+	GetDFUOverSMP().ConfirmNewImage();
+	GetDFUOverSMP().StartServer();
+#endif
+
 /* Get factory data */
 #ifdef CONFIG_CHIP_FACTORY_DATA
 	ReturnErrorOnFailure(mFactoryDataProvider.Init());
@@ -213,14 +244,8 @@ CHIP_ERROR AppTask::Init()
 		memset(sTestEventTriggerEnableKey, 0, sizeof(sTestEventTriggerEnableKey));
 	}
 #else
+	SetDeviceInstanceInfoProvider(&DeviceInstanceInfoProviderMgrImpl());
 	SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
-#endif
-
-#ifdef CONFIG_MCUMGR_SMP_BT
-	/* Initialize DFU over SMP */
-	GetDFUOverSMP().Init();
-	GetDFUOverSMP().ConfirmNewImage();
-	GetDFUOverSMP().StartServer();
 #endif
 
 	/* Initialize timers */
@@ -243,9 +268,14 @@ CHIP_ERROR AppTask::Init()
 
 	gExampleDeviceInfoProvider.SetStorageDelegate(&Server::GetInstance().GetPersistentStorage());
 	chip::DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
+	AppFabricTableDelegate::Init();
 
 	ConfigurationMgr().LogDeviceConfig();
 	PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kBLE));
+
+#ifdef CONFIG_CHIP_ICD_SUBSCRIPTION_HANDLING
+	chip::app::InteractionModelEngine::GetInstance()->RegisterReadHandlerAppCallback(&GetICDUtil());
+#endif
 
 	/*
 	 * Add CHIP event handler and start CHIP thread.
@@ -483,20 +513,20 @@ void AppTask::UpdatePowerSourceClusterState()
 	/* Value is expressed in half percent units ranging from 0 to 200. */
 	uint8_t batteryPercentage;
 	uint32_t batteryTimeRemaining;
-	Clusters::PowerSource::PowerSourceStatus batteryStatus;
-	Clusters::PowerSource::BatChargeLevel batteryChargeLevel;
+	Clusters::PowerSource::PowerSourceStatusEnum batteryStatus;
+	Clusters::PowerSource::BatChargeLevelEnum batteryChargeLevel;
 	bool batteryPresent;
-	Clusters::PowerSource::BatChargeState batteryCharged;
+	Clusters::PowerSource::BatChargeStateEnum batteryCharged;
 
 	if (voltage < 0) {
 		voltage = 0;
 		batteryPercentage = 0;
-		batteryStatus = Clusters::PowerSource::PowerSourceStatus::kUnavailable;
+		batteryStatus = Clusters::PowerSource::PowerSourceStatusEnum::kUnavailable;
 		batteryPresent = false;
 
 		LOG_ERR("Battery level measurement failed %d", voltage);
 	} else {
-		batteryStatus = Clusters::PowerSource::PowerSourceStatus::kActive;
+		batteryStatus = Clusters::PowerSource::PowerSourceStatusEnum::kActive;
 		batteryPresent = true;
 	}
 
@@ -512,17 +542,17 @@ void AppTask::UpdatePowerSourceClusterState()
 	batteryTimeRemaining = kFullBatteryOperationTime * batteryPercentage / kMaxBatteryPercentage;
 
 	if (voltage < kCriticalThresholdVoltageMv) {
-		batteryChargeLevel = Clusters::PowerSource::BatChargeLevel::kCritical;
+		batteryChargeLevel = Clusters::PowerSource::BatChargeLevelEnum::kCritical;
 	} else if (voltage < kWarningThresholdVoltageMv) {
-		batteryChargeLevel = Clusters::PowerSource::BatChargeLevel::kWarning;
+		batteryChargeLevel = Clusters::PowerSource::BatChargeLevelEnum::kWarning;
 	} else {
-		batteryChargeLevel = Clusters::PowerSource::BatChargeLevel::kOk;
+		batteryChargeLevel = Clusters::PowerSource::BatChargeLevelEnum::kOk;
 	}
 
 	if (BatteryCharged()) {
-		batteryCharged = Clusters::PowerSource::BatChargeState::kIsCharging;
+		batteryCharged = Clusters::PowerSource::BatChargeStateEnum::kIsCharging;
 	} else {
-		batteryCharged = Clusters::PowerSource::BatChargeState::kIsNotCharging;
+		batteryCharged = Clusters::PowerSource::BatChargeStateEnum::kIsNotCharging;
 	}
 
 	status = Clusters::PowerSource::Attributes::BatVoltage::Set(kPowerSourceEndpointId, voltage);
@@ -580,7 +610,7 @@ void AppTask::UpdateStatusLED()
 {
 	LedState nextState;
 
-	if (sIsThreadProvisioned && sIsThreadEnabled) {
+	if (sIsNetworkProvisioned && sIsNetworkEnabled) {
 		nextState = LedState::kProvisioned;
 	} else if (sHaveBLEConnections) {
 		nextState = LedState::kConnectedBle;
@@ -626,6 +656,7 @@ void AppTask::ChipEventHandler(const ChipDeviceEvent *event, intptr_t /* arg */)
 {
 	switch (event->Type) {
 	case DeviceEventType::kCHIPoBLEAdvertisingChange:
+		UpdateStatusLED();
 #ifdef CONFIG_CHIP_NFC_COMMISSIONING
 		if (event->CHIPoBLEAdvertisingChange.Result == kActivity_Started) {
 			if (NFCMgr().IsTagEmulationStarted()) {
@@ -638,19 +669,29 @@ void AppTask::ChipEventHandler(const ChipDeviceEvent *event, intptr_t /* arg */)
 			NFCMgr().StopTagEmulation();
 		}
 #endif
-		sIsBleAdvertisingEnabled = ConnectivityMgr().IsBLEAdvertisingEnabled();
 		sHaveBLEConnections = ConnectivityMgr().NumBLEConnections() != 0;
 		UpdateStatusLED();
 		break;
-	case DeviceEventType::kThreadStateChange:
-		sIsThreadProvisioned = ConnectivityMgr().IsThreadProvisioned();
-		sIsThreadEnabled = ConnectivityMgr().IsThreadEnabled();
-		UpdateStatusLED();
-		break;
-	case DeviceEventType::kDnssdPlatformInitialized:
+#if defined(CONFIG_NET_L2_OPENTHREAD)
+	case DeviceEventType::kDnssdInitialized:
 #if CONFIG_CHIP_OTA_REQUESTOR
 		InitBasicOTARequestor();
+#endif /* CONFIG_CHIP_OTA_REQUESTOR */
+		break;
+	case DeviceEventType::kThreadStateChange:
+		sIsNetworkProvisioned = ConnectivityMgr().IsThreadProvisioned();
+		sIsNetworkEnabled = ConnectivityMgr().IsThreadEnabled();
+#elif defined(CONFIG_CHIP_WIFI)
+	case DeviceEventType::kWiFiConnectivityChange:
+		sIsNetworkProvisioned = ConnectivityMgr().IsWiFiStationProvisioned();
+		sIsNetworkEnabled = ConnectivityMgr().IsWiFiStationEnabled();
+#if CONFIG_CHIP_OTA_REQUESTOR
+		if (event->WiFiConnectivityChange.Result == kConnectivity_Established) {
+			InitBasicOTARequestor();
+		}
+#endif /* CONFIG_CHIP_OTA_REQUESTOR */
 #endif
+		UpdateStatusLED();
 		break;
 	default:
 		break;

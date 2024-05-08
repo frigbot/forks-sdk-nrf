@@ -27,6 +27,7 @@
 #include <zephyr/drivers/gpio.h>
 
 #include "hal/nrf_gpio.h"
+#include <nrfx_gpiote.h>
 
 #if DT_NODE_EXISTS(DT_NODELABEL(nrf_radio_coex))
 #define CX_NODE DT_NODELABEL(nrf_radio_coex)
@@ -40,12 +41,16 @@
 /* Value from chapter 7. Logic Timing from Thread Radio Coexistence */
 #define REQUEST_TO_GRANT_US 50U
 
+#define GRANT_PIN_PORT_NO  DT_PROP(DT_GPIO_CTLR(CX_NODE, grant_gpios), port)
+#define GRANT_PIN_PIN_NO   DT_GPIO_PIN(CX_NODE, grant_gpios)
+
 static const struct gpio_dt_spec req_spec = GPIO_DT_SPEC_GET(CX_NODE, req_gpios);
 static const struct gpio_dt_spec pri_spec = GPIO_DT_SPEC_GET(CX_NODE, pri_dir_gpios);
 static const struct gpio_dt_spec gra_spec = GPIO_DT_SPEC_GET(CX_NODE, grant_gpios);
 
 static mpsl_cx_cb_t callback;
 static struct gpio_callback grant_cb;
+static uint32_t grant_abs_pin;
 
 static int32_t grant_pin_is_asserted(bool *is_asserted)
 {
@@ -165,6 +170,12 @@ static int32_t register_callback(mpsl_cx_cb_t cb)
 {
 	callback = cb;
 
+	if (cb != NULL) {
+		nrfx_gpiote_trigger_enable(grant_abs_pin, true);
+	} else {
+		nrfx_gpiote_trigger_disable(grant_abs_pin);
+	}
+
 	return 0;
 }
 
@@ -176,9 +187,8 @@ static const mpsl_cx_interface_t m_mpsl_cx_methods = {
 	.p_register_callback   = register_callback,
 };
 
-static int mpsl_cx_init(const struct device *dev)
+static int mpsl_cx_init(void)
 {
-	ARG_UNUSED(dev);
 
 	int32_t ret;
 
@@ -209,6 +219,8 @@ static int mpsl_cx_init(const struct device *dev)
 	if (ret != 0) {
 		return ret;
 	}
+	grant_abs_pin = NRF_GPIO_PIN_MAP(GRANT_PIN_PORT_NO, GRANT_PIN_PIN_NO);
+	nrfx_gpiote_trigger_disable(grant_abs_pin);
 
 	gpio_init_callback(&grant_cb, gpiote_irq_handler, BIT(gra_spec.pin));
 	gpio_add_callback(gra_spec.port, &grant_cb);
@@ -219,7 +231,7 @@ static int mpsl_cx_init(const struct device *dev)
 SYS_INIT(mpsl_cx_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
 #else // !defined(CONFIG_MPSL_CX_PIN_FORWARDER)
-static int mpsl_cx_init(const struct device *dev)
+static int mpsl_cx_init(void)
 {
 #if DT_NODE_HAS_PROP(CX_NODE, req_gpios)
 	uint8_t req_pin = NRF_DT_GPIOS_TO_PSEL(CX_NODE, req_gpios);

@@ -32,7 +32,7 @@ The Fast Pair standard integration in the |NCS| consists of the following steps:
 These steps are described in the following sections.
 
 The Fast Pair standard implementation in the |NCS| integrates Fast Pair Provider, one of the available `Fast Pair roles`_.
-For an integration example, see the :ref:`peripheral_fast_pair` sample.
+For an integration example, see the :ref:`fast_pair_input_device` sample.
 
 .. rst-class:: numbered-step
 
@@ -47,7 +47,9 @@ The data is used for procedures defined by the Fast Pair standard.
 Registering Fast Pair Provider
 ==============================
 
-See the official `Fast Pair Model Registration`_ documentation for information how to register the device and obtain the Model ID and Anti-Spoofing Public/Private Key pair.
+See the official `Fast Pair Model Registration`_ documentation for information on how to register the device and obtain the Model ID and Anti-Spoofing Public/Private Key pair.
+Alternatively, you can use the debug Model ID and Anti-Spoofing Public/Private Key pair obtained by Nordic Semiconductor for the development purposes.
+See the :ref:`fast_pair_input_device` sample and the :ref:`nrf_desktop` for details about the debug Fast Pair Providers registered by Nordic.
 
 Provisioning registration data onto device
 ==========================================
@@ -91,7 +93,7 @@ The Fast Pair service implementation provides API to generate the advertising da
   To use this extension, ensure the following:
 
   #. Call :c:func:`bt_fast_pair_battery_set` to provide battery information.
-  #. Set :c:member:`bt_fast_pair_adv_config.adv_battery_mode` to either :c:enum:`BT_FAST_PAIR_ADV_BATTERY_MODE_SHOW_UI_IND` or :c:enum:`BT_FAST_PAIR_ADV_BATTERY_MODE_HIDE_UI_IND` to include the battery notification in the generated advertising payload.
+  #. Set :c:member:`bt_fast_pair_not_disc_adv_info.battery_mode` in :c:struct:`bt_fast_pair_adv_config` to either :c:enum:`BT_FAST_PAIR_ADV_BATTERY_MODE_SHOW_UI_IND` or :c:enum:`BT_FAST_PAIR_ADV_BATTERY_MODE_HIDE_UI_IND` to include the battery notification in the generated advertising payload.
 
   See the `Fast Pair Battery Notification extension`_ documentation for more details about this extension.
 
@@ -110,7 +112,7 @@ Fast Pair advertising data provider
 ===================================
 
 The Fast Pair :ref:`advertising data provider <bt_le_adv_prov_readme>` (:kconfig:option:`CONFIG_BT_ADV_PROV_FAST_PAIR`) can be used to manage the Fast Pair advertising data.
-See :ref:`peripheral_fast_pair` for an example of using the provider in a sample.
+See :ref:`fast_pair_input_device` for an example of using the provider in a sample.
 See :file:`subsys/bluetooth/adv_prov/providers/fast_pair.c` for provider implementation.
 
 Advertising TX power
@@ -130,7 +132,7 @@ Advertising data provider
 If your application uses :ref:`bt_le_adv_prov_readme`, you can use the TX power advertising data provider (:kconfig:option:`CONFIG_BT_ADV_PROV_TX_POWER`) to read the advertising TX power from Bluetooth controller and add it to the generated advertising data.
 The :kconfig:option:`CONFIG_BT_ADV_PROV_TX_POWER_CORRECTION_VAL` option can be used to define a TX power correction value that is added to the TX power readout included in the advertising data.
 The option can be used to take into account hardware configuration, for example, used antenna and device casing.
-See :ref:`peripheral_fast_pair` sample for an example of how to use the TX power advertising provider.
+See :ref:`fast_pair_input_device` sample for an example of how to use the TX power advertising provider.
 
 Multiprotocol Service Layer front-end module (MPSL FEM)
 -------------------------------------------------------
@@ -159,3 +161,4 @@ For details, see the :ref:`bt_fast_pair_readme` Bluetooth service documentation 
 The Fast Pair GATT service uses a non-volatile memory to store the Fast Pair user data such as Account Keys and the Personalized Name.
 This data can be cleared by calling the :c:func:`bt_fast_pair_factory_reset` function.
 For details, see the :c:func:`bt_fast_pair_factory_reset` function documentation.
+You can also use the :kconfig:option:`CONFIG_BT_FAST_PAIR_STORAGE_USER_RESET_ACTION` Kconfig option to enable a custom user reset action that executes together with this factory reset operation.

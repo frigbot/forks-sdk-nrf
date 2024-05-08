@@ -1,8 +1,8 @@
 .. |NCS| replace:: nRF Connect SDK
 
-.. |release| replace:: v2.3.0
-.. |release_tt| replace:: ``v2.3.0``
-.. |release_number_tt| replace:: ``2.3.0``
+.. |release| replace:: v2.5.2
+.. |release_tt| replace:: ``v2.5.2``
+.. |release_number_tt| replace:: ``2.5.2``
 
 .. ### Config shortcuts
 
@@ -32,7 +32,7 @@
 .. |connect_terminal_both| replace:: Connect to both kits with a terminal emulator (for example, PuTTY).
    See :ref:`putty` for the required settings.
 
-.. |connect_terminal_ANSI| replace:: Connect to the kit with a terminal emulator that supports VT100/ANSI escape characters (for example, PuTTY).
+.. |connect_terminal_ANSI| replace:: Open a serial port connection to the kit using a terminal emulator that supports VT100/ANSI escape characters (for example, PuTTY).
    See :ref:`putty` for the required settings.
 
 .. |connect_terminal_specific_ANSI| replace:: Connect to the kit that runs this sample with a terminal emulator that supports VT100/ANSI escape characters (for example, PuTTY).
@@ -67,10 +67,8 @@
 
 .. ### VSC shortcuts
 
-.. |vsc_extension_instructions| replace:: The |nRFVSC| is a complete IDE for developing applications for nRF91, nRF53 and nRF52 Series devices.
-   This includes an interface to the compiler and linker, an RTOS-aware debugger, a seamless interface to the nRF Connect SDK, and a serial terminal.
-   For installation instructions, see `Installing using Visual Studio Code`_.
-   For other instructions related to |nRFVSC|, see the `nRF Connect for Visual Studio Code`_ documentation site.
+.. |vsc_extension_description| replace:: The |nRFVSC| is a complete IDE for developing applications compatible with the |NCS|.
+   This includes an interface to the compiler and linker, an RTOS-aware debugger, a seamless interface to the |NCS|, and a serial terminal.
 .. |VSC| replace:: Visual Studio Code
 .. |nRFVSC| replace:: nRF Connect for VS Code extension
 
@@ -84,8 +82,8 @@
 .. ### Zigbee & ZBOSS shortcuts
 
 .. |zigbee_version| replace:: Zigbee 3.0
-.. |zboss_version| replace:: 3.11.2.0
-.. |zigbee_ncp_package_version| replace:: 2.2.0
+.. |zboss_version| replace:: 3.11.2.1
+.. |zigbee_ncp_package_version| replace:: 2.2.1
 .. |zigbee_description| replace:: Zigbee is a portable, low-power software networking protocol that provides connectivity over an 802.15.4-based mesh network.
 .. |enable_zigbee_before_testing| replace:: Make sure to configure the Zigbee stack before building and testing this sample.
    See :ref:`ug_zigbee_configuring` for more information.
@@ -125,6 +123,7 @@
 .. |led_stream| replace:: LED stream module
 .. |net_state| replace:: network state module
 .. |nrf_desktop_module_event_note| replace:: See the :ref:`nrf_desktop_architecture` for more information about the event-based communication in the nRF Desktop application and about how to read this table.
+.. |nrf_desktop_command_note_with_dfu_lock| replace:: With the :ref:`CONFIG_DESKTOP_DFU_LOCK <config_desktop_app_options>` option enabled, the device only executes this command when it holds the DFU owner status.
 .. |nrf_desktop_build_type_conf| replace:: In addition to these build types, some boards can have additional build type configurations that you can use to generate an application in a specific variant.
    Such board-specific configurations use dedicated :file:`prj_*build_type*.conf` files, where the name of the configuration replaces the ``*build_type*`` part in the file name.
    Given the potential number of such configurations, they are not listed above and you can read the description of each of them in the respective configuration file.
@@ -148,14 +147,21 @@
 .. |matter_intro| replace:: `Matter`_ (formerly Project Connected Home over IP or Project CHIP) is an open-source application layer that aims at creating a unified communication standard across smart home devices, mobile applications, and cloud services.
    It supports a wide range of existing technologies, including Wi-Fi, Thread, and Bluetooth® LE, and uses IPv6-based transport protocols like TCP and UDP to ensure connectivity between different kinds of networks.
 .. |matter_gn_required_note| replace:: Matter requires the GN tool.
-   If you are updating from the |NCS| version earlier than v1.5.0, see the :ref:`GN installation instructions <gs_installing_gn>`.
+   If you are updating from the |NCS| version earlier than v1.5.0, see the :ref:`GN installation instructions <manual_installation_gn>`.
 .. |matter_controller_def| replace:: The Matter controller is a node in the Matter network and a role within the :ref:`Matter development environment <ug_matter_gs_testing>`.
    The controller device is used to pair and control the Matter accessory device remotely over a network, interacting with it using Bluetooth® LE and the regular IPv6 communication.
 .. |matter_controller_def_nolink| replace:: The Matter controller is a node in the Matter network and a role within the Matter development environment.
    The controller device is used to pair and control the Matter accessory device remotely over a network, interacting with it using Bluetooth® LE and the regular IPv6 communication.
 .. |matter_chip_tool_pc_default_line| replace:: CHIP Tool for Linux or macOS is the default implementation of the :ref:`ug_matter_configuring_controller` role, recommended for the nRF Connect platform.
+.. |matter_cd_definition| replace:: a cryptographic document created by the CSA for each device type, used to confirm that a given type of device was certified
+.. |matter_cd_info_note_for_samples| replace:: This data payload also includes test Device Attestation, with test Certification Declaration, Product ID, and Vendor ID.
+   These are used for :ref:`ug_matter_device_attestation_commissioning_info`, and you can generate your own test Certification Declaration when you :ref:`work on Matter end product <ug_matter_device_attestation_testing_da>`.
 
 .. ### Other shortcuts
+
+.. |ncs_oot_sample_note| replace:: Some samples in the |NCS| are currently not designed to work out-of-tree.
+   You may need to manually configure your sample to work correctly in the |nRFVSC|.
+.. |ncs_unchanged_samples_note| replace:: If you are working with embedded devices, it is a good practice to first test your setup by programming an unchanged :ref:`sample<samples>` to your development kit.
 
 .. |application_sample_definition| replace:: For simplicity, this guide will refer to both :ref:`samples<samples>` and :ref:`applications<applications>` as "applications".
 .. |application_sample_long_path_windows| replace:: On Windows, because of the `Windows path length limitations`_, the build can fail with errors related to permissions or missing files if some paths in the build are too long.
@@ -165,13 +171,16 @@
 
 .. |external_flash_size| replace:: external flash memory with minimum 4 MB
 
-.. |gps_tradeoffs| replace:: For more information on the various trade-offs of using A-GPS compared to using P-GPS, see the `nRF Cloud Location Services documentation`_.
+.. |gnss_tradeoffs| replace:: For more information on the various trade-offs of using A-GNSS compared to using P-GPS, see the `nRF Cloud Location Services documentation`_.
 
 .. |thingy53_sample_note| replace:: If you build this application for Thingy:53, it enables additional features. See :ref:`thingy53_app_guide` for details.
 
 .. |nrf5340_mesh_sample_note| replace:: For nRF5340 and Thingy:53, the extended advertiser has to be set manually for the network core, because the Bluetooth® Low Energy does not know that the Bluetooth mesh is enabled when built for this core. This is already done for this sample by setting ``CONFIG_BT_EXT_ADV=y`` for the network core.
 
 .. |nrf5340_audio_note| replace:: The |NCS| includes the :ref:`nrf53_audio_app` application, a complete project that integrates the LE Audio standard with custom reference hardware based on the nRF5340 DK.
+.. |nrf5340_audio_net_core_hex_note| replace:: The network core for both gateway and headsets is programmed with the precompiled Bluetooth Low Energy Controller binary file :file:`ble5-ctr-rpmsg_<XYZ>.hex`, where *<XYZ>* corresponds to the controller version, for example :file:`ble5-ctr-rpmsg_3216.hex`.
+   This file includes the LE Audio Controller Subsystem for nRF53 and is provided in the :file:`nrf/lib/bin/bt_ll_acs_nrf53/bin` directory.
+   If :ref:`DFU is enabled <nrf53_audio_app_configuration_configure_fota>`, the subsystem's binary file will be generated in the :file:`build/zephyr/` directory and will be called :file:`net_core_app_signed.hex`.
 
 .. |trusted_execution| replace:: nRF5340 and nRF9160
 
@@ -184,6 +193,8 @@
    The NFCT driver is part of the nrfx driver package.
    For more information about this driver, see the NFCT driver page in the `nrfx`_ repository.
 
-.. |Supported OS| replace:: The operating system versions that support the |NCS| tools are listed in the :ref:`gs_supported_OS` section.
+.. |Supported OS| replace:: The operating system versions that support the |NCS| tools are listed in the :ref:`supported_OS` section.
 
 .. |no_changes_yet_note| replace:: No changes since the latest |NCS| release.
+
+.. |serial_port_sec_tag| replace:: where ``<serial port>`` is the serial port of your device and ``<sec tag>`` is the previously chosen unused security tag.

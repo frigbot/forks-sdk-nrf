@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2021 Nordic Semiconductor ASA
+ * Copyright (c) 2021-2023 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
 #include "dfu_over_smp.h"
 
-#if !defined(CONFIG_MCUMGR_SMP_BT) || !defined(CONFIG_MCUMGR_CMD_IMG_MGMT) || !defined(CONFIG_MCUMGR_CMD_OS_MGMT)
+#if !defined(CONFIG_MCUMGR_TRANSPORT_BT) || !defined(CONFIG_MCUMGR_GRP_IMG) || !defined(CONFIG_MCUMGR_GRP_OS)
 #error "DFUOverSMP requires MCUMGR module configs enabled"
 #endif
 
@@ -19,6 +19,7 @@
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/mgmt/mcumgr/mgmt/callbacks.h>
 #include <zephyr/mgmt/mcumgr/mgmt/mgmt.h>
+#include <zephyr/mgmt/mcumgr/grp/img_mgmt/img_mgmt.h>
 
 using namespace ::chip;
 using namespace ::chip::DeviceLayer;
@@ -31,7 +32,11 @@ constexpr uint8_t kAdvertisingFlags = BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR;
 
 namespace
 {
-int32_t UploadConfirmHandler(uint32_t event, int32_t rc, bool *abort_more, void *data, size_t data_size)
+enum mgmt_cb_return UploadConfirmHandler(uint32_t event,
+					 enum mgmt_cb_return prev_status,
+					 int32_t *rc, uint16_t *group,
+					 bool *abort_more, void *data,
+					 size_t data_size)
 {
 	const img_mgmt_upload_check &imgData = *static_cast<img_mgmt_upload_check *>(data);
 	IgnoreUnusedVariable(imgData);
@@ -40,10 +45,14 @@ int32_t UploadConfirmHandler(uint32_t event, int32_t rc, bool *abort_more, void 
 			static_cast<unsigned>(imgData.req->off), static_cast<unsigned>(imgData.action->size),
 			static_cast<unsigned>(imgData.req->image));
 
-	return MGMT_ERR_EOK;
+	return MGMT_CB_OK;
 }
 
-int32_t CommandHandler(uint32_t event, int32_t rc, bool *abort_more, void *data, size_t data_size)
+enum mgmt_cb_return CommandHandler(uint32_t event,
+				   enum mgmt_cb_return prev_status,
+				   int32_t *rc, uint16_t *group,
+				   bool *abort_more, void *data,
+				   size_t data_size)
 {
 	if (event == MGMT_EVT_OP_CMD_RECV) {
 		GetFlashHandler().DoAction(ExternalFlashManager::Action::WAKE_UP);
@@ -51,7 +60,7 @@ int32_t CommandHandler(uint32_t event, int32_t rc, bool *abort_more, void *data,
 		GetFlashHandler().DoAction(ExternalFlashManager::Action::SLEEP);
 	}
 
-	return MGMT_ERR_EOK;
+	return MGMT_CB_OK;
 }
 
 mgmt_callback sUploadCallback = {

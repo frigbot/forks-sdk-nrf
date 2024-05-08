@@ -18,15 +18,22 @@ Before you start
 Before you can build the documentation, you must install the required tools.
 The following tool versions have been tested to work:
 
-* Doxygen 1.9.4
+* Doxygen 1.9.6
 * Mscgen 0.20
 * PlantUML
 * Python dependencies as listed in :ref:`python_req_documentation` on the Requirements page
 
 Complete the following steps to install the required tools:
 
-1. If you have not done so already, install the |NCS| as described in :ref:`gs_installing` or :ref:`gs_assistant`.
+1. If you have not done so already, install the |NCS| as described in :ref:`auto_installation` or :ref:`manual_installation`.
 #. Install or update all required :ref:`Python dependencies <additional_deps>`.
+#. Install the additional Python dependencies for building the documentation by entering the following command in a terminal window in the :file:`ncs` folder.
+   `Python virtual environment <Python virtual environments_>`_ needs to be active for the command to work:
+
+   .. code-block:: bash
+
+      pip install -U -r nrf/doc/requirements.txt
+
 #. Install `Doxygen`_.
 #. Install `Mscgen`_ and make sure that the ``mscgen`` executable is in your :envvar:`PATH`.
 #. Install PlantUML.
@@ -110,24 +117,6 @@ To clean the build folders for a particular documentation set:
    ninja *docset-name*-clean
 
 Here, *docset-name* is the name of the documentation set, for example, ``nrf``.
-
-Downloading cached builds
-=========================
-
-The |NCS| provides cached builds for the current documentation.
-That means that if you do not have local modifications to a documentation set, you can download a cached version of the build.
-Downloading is usually quicker than building the documentation from scratch, however, this might depend on your Internet connection speed.
-
-.. note::
-   Using cached builds is currently in an :ref:`experimental <software_maturity>` state.
-
-To enable the online cache, set the :envvar:`NCS_CACHE_ENABLE` environment variable.
-For example, on Windows, enter the following command::
-
-  set NCS_CACHE_ENABLE=1
-
-The cached build is downloaded only if there are no local modifications to a specific documentation set.
-To force the download even if there are local modifications, set :envvar:`NCS_CACHE_FORCE` in addition to :envvar:`NCS_CACHE_ENABLE`.
 
 .. _testing_versions:
 

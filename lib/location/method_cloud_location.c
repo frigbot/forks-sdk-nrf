@@ -30,7 +30,7 @@ struct method_cloud_location_start_work_args {
 	struct k_work work_item;
 	const struct location_wifi_config *wifi_config;
 	const struct location_cellular_config *cell_config;
-	int64_t starting_uptime_ms;
+	int64_t locreq_timeout_uptime;
 };
 
 static struct method_cloud_location_start_work_args method_cloud_location_start_work;
@@ -44,42 +44,20 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 	const struct location_cellular_config *cell_config = work_data->cell_config;
 	struct wifi_scan_info *scan_wifi_info = NULL;
 	struct lte_lc_cells_info *scan_cellular_info = NULL;
-	int64_t scan_start_time;
-	int32_t used_timeout_ms;
 	int err = 0;
 #if defined(CONFIG_LOCATION_METHOD_WIFI)
 	struct k_sem wifi_scan_ready;
 
 	k_sem_init(&wifi_scan_ready, 0, 1);
-#endif
-#if defined(CONFIG_LOCATION_METHOD_CELLULAR)
-	struct k_sem ncellmeas_ready;
 
-	k_sem_init(&ncellmeas_ready, 0, 1);
-#endif
-
-	if (wifi_config != NULL && cell_config != NULL) {
-		used_timeout_ms = MIN(cell_config->timeout, wifi_config->timeout);
-	} else if (cell_config != NULL) {
-		used_timeout_ms = cell_config->timeout;
-	} else {
-		__ASSERT_NO_MSG(wifi_config != NULL);
-		used_timeout_ms = wifi_config->timeout;
-	}
-
-	location_core_timer_start(used_timeout_ms);
-	scan_start_time = k_uptime_get();
-
-#if defined(CONFIG_LOCATION_METHOD_WIFI)
 	if (wifi_config != NULL) {
-		err = scan_wifi_start(&wifi_scan_ready);
+		scan_wifi_execute(wifi_config->timeout, &wifi_scan_ready);
 	}
 #endif
 
 #if defined(CONFIG_LOCATION_METHOD_CELLULAR)
 	if (cell_config != NULL) {
-		err = scan_cellular_start(&ncellmeas_ready);
-		k_sem_take(&ncellmeas_ready, K_FOREVER);
+		scan_cellular_execute(cell_config->timeout, cell_config->cell_count);
 		scan_cellular_info = scan_cellular_results_get();
 	}
 #endif
@@ -95,8 +73,6 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 		goto end;
 	}
 
-	location_core_timer_stop();
-
 	if (scan_cellular_info == NULL && scan_wifi_info == NULL) {
 		LOG_WRN("No cellular neighbor cells or Wi-Fi access points found");
 		err = -ENODATA;
@@ -104,6 +80,8 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 	}
 
 #if defined(CONFIG_LOCATION_SERVICE_EXTERNAL)
+	ARG_UNUSED(wifi_config);
+
 	struct location_data_cloud request = {
 #if defined(CONFIG_LOCATION_METHOD_CELLULAR)
 		.cell_data = scan_cellular_info,
@@ -118,15 +96,14 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 #else
 	struct location_data location;
 	struct location_data location_result = { 0 };
-	int64_t scan_time;
 	struct cloud_service_pos_req params = {
 		.cell_data = scan_cellular_info,
 		.wifi_data = scan_wifi_info,
 		.service = (cell_config != NULL) ? cell_config->service : wifi_config->service,
-		.timeout_ms = used_timeout_ms
+		.timeout_ms = SYS_FOREVER_MS
 	};
 
-	if (!location_utils_is_default_pdn_active()) {
+	if (IS_ENABLED(CONFIG_NRF_MODEM_LIB) && !location_utils_is_lte_available()) {
 		/* Not worth to start trying to fetch the location over LTE.
 		 * Thus, fail faster in this case and save the trying "costs".
 		 */
@@ -138,19 +115,16 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 	/* Scannings done at this point of time. Store current time to response. */
 	location_utils_systime_to_location_datetime(&location_result.datetime);
 
-	/* Calculate timeout for cloud request */
-	if (used_timeout_ms != SYS_FOREVER_MS) {
-		/* +1 to round the time up */
-		scan_time = (k_uptime_get() - scan_start_time) + 1;
-
-		/* Check if timeout has already elapsed */
-		if (scan_time >= used_timeout_ms) {
+	/* Timeout for cloud request is the remaining time from the location request timeout.
+	 * Notice that it's not from the method timeout, which only applies to the scan procedure.
+	 */
+	if (work_data->locreq_timeout_uptime != SYS_FOREVER_MS) {
+		params.timeout_ms = work_data->locreq_timeout_uptime - k_uptime_get();
+		if (params.timeout_ms < 0) {
 			LOG_WRN("Timeout occurred during scannings");
 			err = -ETIMEDOUT;
 			goto end;
 		}
-		/* Take time used for neighbour cell measurements into account */
-		params.timeout_ms = used_timeout_ms - scan_time;
 	}
 
 	/* Request location from the cloud */
@@ -161,21 +135,18 @@ static void method_cloud_location_positioning_work_fn(struct k_work *work)
 		location_result.latitude = location.latitude;
 		location_result.longitude = location.longitude;
 		location_result.accuracy = location.accuracy;
-		if (running) {
-			running = false;
-			location_core_event_cb(&location_result);
-		}
+		location_core_event_cb(&location_result);
 	}
+
 #endif /* defined(CONFIG_LOCATION_SERVICE_EXTERNAL) */
 
 end:
 	if (err == -ETIMEDOUT) {
 		location_core_event_cb_timeout();
-		running = false;
 	} else if (err) {
 		location_core_event_cb_error();
-		running = false;
 	}
+	running = false;
 }
 
 int method_cloud_location_cancel(void)
@@ -216,7 +187,7 @@ int method_cloud_location_get(const struct location_request_info *request)
 		method_cloud_location_start_work.wifi_config = request->wifi;
 	}
 
-	method_cloud_location_start_work.starting_uptime_ms = k_uptime_get();
+	method_cloud_location_start_work.locreq_timeout_uptime = request->timeout_uptime;
 	k_work_submit_to_queue(
 		location_core_work_queue_get(),
 		&method_cloud_location_start_work.work_item);

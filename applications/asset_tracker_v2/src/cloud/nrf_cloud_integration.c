@@ -57,12 +57,11 @@ static struct dfu_target_fmfu_fdev ext_flash_dev = {
 	.dev = DEVICE_DT_GET_ONE(jedec_spi_nor)
 };
 
-static int fmfu_and_modem_init(const struct device *dev)
+static int fmfu_and_modem_init(void)
 {
 	enum nrf_cloud_fota_type fota_type = NRF_CLOUD_FOTA_TYPE__INVALID;
 	int ret;
 
-	ARG_UNUSED(dev);
 
 	/* Check if a full modem FOTA job is pending */
 	ret = nrf_cloud_fota_pending_job_type_get(&fota_type);
@@ -81,9 +80,6 @@ static int fmfu_and_modem_init(const struct device *dev)
 			}
 		}
 	}
-
-	/* Ignore the result, it will be checked later */
-	(void)nrf_modem_lib_init(NORMAL_MODE);
 
 	return 0;
 }
@@ -175,6 +171,9 @@ static void nrf_cloud_event_handler(const struct nrf_cloud_evt *evt)
 	case NRF_CLOUD_EVT_TRANSPORT_CONNECTED:
 		LOG_DBG("NRF_CLOUD_EVT_TRANSPORT_CONNECTED");
 		break;
+	case NRF_CLOUD_EVT_TRANSPORT_CONNECT_ERROR:
+		LOG_ERR("NRF_CLOUD_EVT_TRANSPORT_CONNECT_ERROR: %d", evt->status);
+		break;
 	case NRF_CLOUD_EVT_READY:
 		LOG_DBG("NRF_CLOUD_EVT_READY");
 		cloud_wrap_evt.type = CLOUD_WRAP_EVT_CONNECTED;
@@ -234,7 +233,16 @@ static void nrf_cloud_event_handler(const struct nrf_cloud_evt *evt)
 		notify = true;
 		break;
 	case NRF_CLOUD_EVT_RX_DATA_LOCATION:
-		LOG_DBG("NRF_CLOUD_EVT_RX_DATA_LOCATION");
+		LOG_DBG("NRF_CLOUD_EVT_RX_DATA_LOCATION: %s", (char *)evt->data.ptr);
+
+		/* If GNSS is NOT the first priority, we'll handle the cloud response */
+		if (!IS_ENABLED(CONFIG_LOCATION_REQUEST_DEFAULT_METHOD_FIRST_GNSS)) {
+			cloud_wrap_evt.type = CLOUD_WRAP_EVT_CLOUD_LOCATION_RESULT_RECEIVED;
+			cloud_wrap_evt.data.buf = (char *)evt->data.ptr;
+			cloud_wrap_evt.data.len = evt->data.len;
+
+			notify = true;
+		}
 		break;
 	case NRF_CLOUD_EVT_USER_ASSOCIATION_REQUEST:
 		LOG_WRN("NRF_CLOUD_EVT_USER_ASSOCIATION_REQUEST");
@@ -441,6 +449,16 @@ int cloud_wrap_cloud_location_send(char *buf, size_t len, bool ack, uint32_t id)
 	return 0;
 }
 
+bool cloud_wrap_cloud_location_response_wait(void)
+{
+	/* If GNSS is the first priority, then we can ignore the location response from the cloud */
+	if (IS_ENABLED(CONFIG_LOCATION_REQUEST_DEFAULT_METHOD_FIRST_GNSS)) {
+		return false;
+	} else {
+		return true;
+	}
+}
+
 #if defined(CONFIG_LOCATION_METHOD_WIFI)
 int cloud_wrap_wifi_access_points_send(char *buf, size_t len, bool ack, uint32_t id)
 {
@@ -479,9 +497,9 @@ int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id,
 	return -ENOTSUP;
 }
 
-int cloud_wrap_agps_request_send(char *buf, size_t len, bool ack, uint32_t id)
+int cloud_wrap_agnss_request_send(char *buf, size_t len, bool ack, uint32_t id)
 {
-	/* Not supported, A-GPS is requested internally via the nRF Cloud A-GPS library. */
+	/* Not supported, A-GNSS is requested internally via the nRF Cloud A-GNSS library. */
 	return -ENOTSUP;
 }
 

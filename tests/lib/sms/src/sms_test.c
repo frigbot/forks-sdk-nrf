@@ -11,6 +11,7 @@
 #include <zephyr/device.h>
 #include <modem/sms.h>
 #include <modem/at_monitor.h>
+#include <modem/lte_lc.h>
 
 #include "cmock_nrf_modem_at.h"
 
@@ -283,10 +284,109 @@ void test_sms_reregister_unknown_cms_error_code(void)
 	sms_unreg_helper();
 }
 
-/********* SMS SEND TESTS ***********************/
-/* The following site used as a reference for generated messages:
- * http://smstools3.kekekasvi.com/topic.php?id=288
+/* Test lte_lc callback handling SMS re-registration.
+ * Tests the following:
+ * - SMS registration
+ * - modem offline
+ * - modem online
+ * - SMS re-registered automatically
  */
+void test_sms_lte_lc_cb_reregisteration(void)
+{
+	char cnmi_reg_nok[] = "+CNMI: 0,0,0,0,1\r\n";
+
+	sms_reg_helper();
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_OFFLINE);
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CEREG=5", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CSCON=1", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+
+	__cmock_nrf_modem_at_cmd_ExpectAndReturn(NULL, 0, "AT+CNMI?", 0);
+	__cmock_nrf_modem_at_cmd_IgnoreArg_buf();
+	__cmock_nrf_modem_at_cmd_IgnoreArg_len();
+	__cmock_nrf_modem_at_cmd_ReturnArrayThruPtr_buf(cnmi_reg_nok, sizeof(cnmi_reg_nok));
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CNMI=3,2,0,1", 0);
+
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_LTE);
+
+	sms_unreg_helper();
+}
+
+/* Test lte_lc callback handling SMS re-registration.
+ * Tests the following:
+ * - SMS registration
+ * - modem online (SMS library kind of assumes it was already online because SMS is registered)
+ * - SMS re-registeration not done because it exists
+ */
+void test_sms_lte_lc_cb_registration_already_exists(void)
+{
+	char cnmi_reg_ok[] = "+CNMI: 3,2,0,1,1\r\n";
+
+	sms_reg_helper();
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CEREG=5", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CSCON=1", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+
+	__cmock_nrf_modem_at_cmd_ExpectAndReturn(NULL, 0, "AT+CNMI?", 0);
+	__cmock_nrf_modem_at_cmd_IgnoreArg_buf();
+	__cmock_nrf_modem_at_cmd_IgnoreArg_len();
+	__cmock_nrf_modem_at_cmd_ReturnArrayThruPtr_buf(cnmi_reg_ok, sizeof(cnmi_reg_ok));
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_NORMAL);
+
+	sms_unreg_helper();
+}
+
+/* Test lte_lc callback handling SMS re-registration.
+ * Tests the following:
+ * - SMS registration
+ * - modem offline
+ * - modem online, SMS re-registeration failing
+ */
+void test_sms_lte_lc_cb_reregisteration_fail(void)
+{
+	sms_reg_helper();
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_OFFLINE);
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CEREG=5", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CSCON=1", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+
+	__cmock_nrf_modem_at_cmd_ExpectAndReturn(NULL, 0, "AT+CNMI?", -EINVAL);
+	__cmock_nrf_modem_at_cmd_IgnoreArg_buf();
+	__cmock_nrf_modem_at_cmd_IgnoreArg_len();
+
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_NORMAL);
+
+	/* Unregister listener. SMS got unregistered already above */
+	sms_unregister_listener(test_handle);
+	test_handle = -1;
+}
+
+/* Test lte_lc callback handling SMS re-registration.
+ * Tests the following:
+ * - modem offline
+ * - modem online
+ * - no SMS (re)registration
+ */
+void test_sms_lte_lc_cb_registeration_not_exists(void)
+{
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_OFFLINE);
+
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CEREG=5", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CSCON=1", 0);
+	__cmock_nrf_modem_at_printf_ExpectAndReturn("AT+CFUN=%d", 0);
+	lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_LTE);
+}
+
+/********* SMS SEND TEXT TESTS ***********************/
 
 /**
  * Test sending using phone number with 10 characters and preceded by '+' sign.
@@ -505,18 +605,7 @@ void test_send_text_empty(void)
 	TEST_ASSERT_EQUAL(0, ret);
 }
 
-/** Text is NULL. Message will be sent successfully. */
-void test_send_text_null(void)
-{
-	__cmock_nrf_modem_at_printf_ExpectAndReturn(
-		"AT+CMGS=12\r002100099121436587F9000000\x1A", 0);
-
-	int ret = sms_send_text("123456789", NULL);
-
-	TEST_ASSERT_EQUAL(0, ret);
-}
-
-/********* SMS SEND FAIL TESTS ******************/
+/********* SMS SEND TEXT FAIL TESTS ******************/
 
 /** Phone number is empty. */
 void test_send_fail_number_empty(void)
@@ -530,6 +619,14 @@ void test_send_fail_number_empty(void)
 void test_send_fail_number_null(void)
 {
 	int ret = sms_send_text(NULL, "123456789");
+
+	TEST_ASSERT_EQUAL(-EINVAL, ret);
+}
+
+/** Text is NULL. */
+void test_send_fail_text_null(void)
+{
+	int ret = sms_send_text("123456789", NULL);
 
 	TEST_ASSERT_EQUAL(-EINVAL, ret);
 }
@@ -556,6 +653,70 @@ void test_send_fail_atcmd_concat(void)
 		"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890");
 
 	TEST_ASSERT_EQUAL(304, ret);
+}
+
+/********* SMS SEND GSM7BIT TESTS ******************/
+
+/** Data has special characters. */
+void test_send_gsm7bit_special_characters(void)
+{
+	uint8_t data[] = {
+		0x00, 0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0E, 0x0F, 0x10, 0x12, 0x13, 0x14, 0x15,
+		0x16, 0x17, 0x18, 0x19, 0x1B, 0x65, 0x1B, 0x65,
+		0x1C, 0x1D, 0x1E, 0x1F, 0x24, 0x40, 0x5B, 0x5C,
+		0x5D, 0x5E, 0x5F, 0x60, 0x7B, 0x7C, 0x7D, 0x7E,	0x7F
+	};
+	__cmock_nrf_modem_at_printf_ExpectAndReturn(
+		"AT+CMGS=48\r002100099121436587F900002980C08050301C1009C7032299502A960B26B3296FCA9C8EE743026EB95DEF17BCE7F7FD7F\x1A",
+		0);
+
+	int ret = sms_send("123456789", data, sizeof(data), SMS_DATA_TYPE_GSM7BIT);
+
+	TEST_ASSERT_EQUAL(0, ret);
+}
+
+/** Data has special characters. */
+void test_send_gsm7bit_fail_too_long(void)
+{
+	uint8_t data[] = {
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00, /* 16 */
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00, /* 48 */
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00, /* 96 */
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00, /* 144 */
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00,
+		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x00, /* 192 */
+	};
+
+	int ret = sms_send("123456789", data, sizeof(data), SMS_DATA_TYPE_GSM7BIT);
+
+	TEST_ASSERT_EQUAL(-E2BIG, ret);
+}
+
+/** Data is NULL. */
+void test_send_gsm7bit_fail_data_null(void)
+{
+	int ret = sms_send("123456789", NULL, 0, SMS_DATA_TYPE_GSM7BIT);
+
+	TEST_ASSERT_EQUAL(-EINVAL, ret);
 }
 
 /********* SMS RECV TESTS ***********************/
@@ -1774,22 +1935,24 @@ void test_recv_loop(void)
 }
 
 /* This is needed because AT Monitor library is initialized in SYS_INIT. */
-static int sms_test_sys_init(const struct device *unused)
+static int sms_test_sys_init(void)
 {
 	__cmock_nrf_modem_at_notif_handler_set_ExpectAnyArgsAndReturn(0);
 
 	return 0;
 }
 
-/* It is required to be added to each test. That is because unity is using
- * different main signature (returns int) and zephyr expects main which does
- * not return value.
+/* It is required to be added to each test. That is because unity's
+ * main may return nonzero, while zephyr's main currently must
+ * return 0 in all cases (other values are reserved).
  */
 extern int unity_main(void);
 
-void main(void)
+int main(void)
 {
 	(void)unity_main();
+
+	return 0;
 }
 
 SYS_INIT(sms_test_sys_init, POST_KERNEL, 0);

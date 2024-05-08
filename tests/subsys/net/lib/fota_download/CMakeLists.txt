@@ -15,16 +15,16 @@ target_sources(app PRIVATE ${app_sources})
 
 target_sources(app
   PRIVATE
-  ${ZEPHYR_BASE}/../nrf/subsys/net/lib/fota_download/src/fota_download.c
-  ${ZEPHYR_BASE}/../nrf/subsys/net/lib/fota_download/src/fota_download_util.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/net/lib/fota_download/src/fota_download.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/net/lib/fota_download/src/util/fota_download_util.c
   )
 
 target_include_directories(app
   PRIVATE
   src
-  ${ZEPHYR_BASE}/../nrf/subsys/net/lib/fota_download/include
-  ${ZEPHYR_BASE}/../nrf/include/net/
-  ${ZEPHYR_BASE}/../nrf/subsys/dfu/include
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/net/lib/fota_download/include
+  ${ZEPHYR_NRF_MODULE_DIR}/include/net/
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/dfu/include
   . # To get 'pm_config.h'
   )
 
@@ -39,6 +39,9 @@ target_compile_options(app
   -DCONFIG_FOTA_DOWNLOAD_LOG_LEVEL=2
   -DCONFIG_FOTA_SOCKET_RETRIES=2
   -DCONFIG_FW_INFO_MAGIC_LEN=12
+  -DCONFIG_FOTA_DOWNLOAD_RESOURCE_LOCATOR_LENGTH=512
+  -DCONFIG_FOTA_DOWNLOAD_FILE_NAME_LENGTH=128
+  -DCONFIG_FOTA_DOWNLOAD_HOST_NAME_LENGTH=128
   ${info_magic}
   ${ext_api_magic}
   )

@@ -32,12 +32,15 @@ config TRANSPORT_CIS
 
 endchoice
 
+config ZBUS_RUNTIME_OBSERVERS_POOL_SIZE
+	int "Number of zbus observers"
+	default 6
+
 #----------------------------------------------------------------------------#
 rsource "Kconfig.defaults"
 rsource "src/audio/Kconfig"
 rsource "src/bluetooth/Kconfig"
 rsource "src/drivers/Kconfig"
-rsource "src/events/Kconfig"
 rsource "src/modules/Kconfig"
 rsource "src/utils/Kconfig"
 rsource "dfu/conf/Kconfig.dfu"

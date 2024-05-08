@@ -13,17 +13,16 @@ FILE(GLOB app_sources src/*.c)
 target_sources(app
   PRIVATE
   ${app_sources}
-  ${NRF_DIR}/subsys/bluetooth/mesh/light_ctrl_srv.c
-  ${NRF_DIR}/subsys/bluetooth/mesh/light_ctrl_reg.c
-  ${NRF_DIR}/subsys/bluetooth/mesh/light_ctrl_reg_spec.c
-  ${NRF_DIR}/subsys/bluetooth/mesh/sensor_types.c
-  ${NRF_DIR}/subsys/bluetooth/mesh/sensor.c
-  ${ZEPHYR_BASE}/subsys/net/buf.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/light_ctrl_srv.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/light_ctrl_reg.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/light_ctrl_reg_spec.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/sensor_types.c
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/sensor.c
   )
 
 target_include_directories(app
   PRIVATE
-  ${NRF_DIR}/subsys/bluetooth/mesh
+  ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh
   ${ZEPHYR_BASE}/subsys/bluetooth
   )
 
@@ -37,13 +36,13 @@ target_compile_options(app
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_MANUAL=5
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_OCCUPANCY_MODE=1
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_OCCUPANCY_DELAY=0
-  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_ON=500
-  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_ON=3
+  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_ON=1000
+  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_ON=60
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_PROLONG=5000
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_STANDBY_AUTO=5000
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_PROLONG=3
-  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_STANDBY_MANUAL=500
-  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_LVL_STANDBY=500
+  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_TIME_FADE_STANDBY_MANUAL=700
+  -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_LVL_STANDBY=700
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_LVL_ON=20000
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_LVL_PROLONG=10000
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_REG=1
@@ -58,7 +57,12 @@ target_compile_options(app
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_REG_LUX_ON=500
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_REG_LUX_PROLONG=200
   -DCONFIG_BT_MESH_LIGHT_CTRL_SRV_REG_LUX_STANDBY=100
+  -DCONFIG_BT_MESH_LIGHT_CTRL_AMB_LIGHT_LEVEL_TIMEOUT=20
+  -DCONFIG_BT_MESH_SENSOR_CHANNELS_MAX=1
+  -DCONFIG_BT_MESH_USES_TINYCRYPT
 )
+
+zephyr_linker_sources(SECTIONS ${ZEPHYR_NRF_MODULE_DIR}/subsys/bluetooth/mesh/sensor_types.ld)
 
 zephyr_ld_options(
     ${LINKERFLAGPREFIX},--allow-multiple-definition

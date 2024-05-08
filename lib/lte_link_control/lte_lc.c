@@ -18,11 +18,15 @@
 #include <modem/at_cmd_parser.h>
 #include <modem/at_params.h>
 #include <modem/at_monitor.h>
+#include <modem/nrf_modem_lib.h>
 #include <zephyr/logging/log.h>
 
 #include "lte_lc_helpers.h"
 
 LOG_MODULE_REGISTER(lte_lc, CONFIG_LTE_LINK_CONTROL_LOG_LEVEL);
+
+/* Internal system mode value used when CONFIG_LTE_NETWORK_MODE_DEFAULT is enabled. */
+#define LTE_LC_SYSTEM_MODE_DEFAULT 0xff
 
 #define SYS_MODE_PREFERRED \
 	(IS_ENABLED(CONFIG_LTE_NETWORK_MODE_LTE_M)		? \
@@ -37,7 +41,19 @@ LOG_MODULE_REGISTER(lte_lc, CONFIG_LTE_LINK_CONTROL_LOG_LEVEL);
 		LTE_LC_SYSTEM_MODE_LTEM_NBIOT			: \
 	IS_ENABLED(CONFIG_LTE_NETWORK_MODE_LTE_M_NBIOT_GPS)	? \
 		LTE_LC_SYSTEM_MODE_LTEM_NBIOT_GPS		: \
-	LTE_LC_SYSTEM_MODE_NONE)
+	LTE_LC_SYSTEM_MODE_DEFAULT)
+
+/* Internal enums */
+
+enum feaconf_oper {
+	FEACONF_OPER_WRITE = 0,
+	FEACONF_OPER_READ  = 1,
+	FEACONF_OPER_LIST  = 2
+};
+
+enum feaconf_feat {
+	FEACONF_FEAT_PROPRIETARY_PSM = 0
+};
 
 /* Static variables */
 
@@ -66,7 +82,8 @@ static char rai_param[2] = CONFIG_LTE_RAI_REQ_VALUE;
 
 /* Requested NCELLMEAS params */
 static struct lte_lc_ncellmeas_params ncellmeas_params;
-static bool ncellmeas_ongoing;
+/* Sempahore value 1 means ncellmeas is not ongoing, and 0 means it's ongoing. */
+K_SEM_DEFINE(ncellmeas_idle_sem, 1, 1);
 
 static const enum lte_lc_system_mode sys_mode_preferred = SYS_MODE_PREFERRED;
 
@@ -79,7 +96,7 @@ static const enum lte_lc_system_mode sys_mode_preferred = SYS_MODE_PREFERRED;
 static enum lte_lc_system_mode sys_mode_target = SYS_MODE_PREFERRED;
 
 /* System mode preference to set when configuring system mode. */
-static enum lte_lc_system_mode_preference mode_pref_target = CONFIG_LTE_MODE_PREFERENCE;
+static enum lte_lc_system_mode_preference mode_pref_target = CONFIG_LTE_MODE_PREFERENCE_VALUE;
 static enum lte_lc_system_mode_preference mode_pref_current;
 
 static const enum lte_lc_system_mode sys_mode_fallback =
@@ -93,13 +110,12 @@ static const enum lte_lc_system_mode sys_mode_fallback =
 	IS_ENABLED(CONFIG_LTE_NETWORK_MODE_NBIOT_GPS)	?
 		LTE_LC_SYSTEM_MODE_LTEM_GPS		:
 #endif
-	LTE_LC_SYSTEM_MODE_NONE;
+	LTE_LC_SYSTEM_MODE_DEFAULT;
 
-static enum lte_lc_system_mode sys_mode_current = LTE_LC_SYSTEM_MODE_NONE;
+static enum lte_lc_system_mode sys_mode_current = LTE_LC_SYSTEM_MODE_DEFAULT;
 
 /* Parameters to be passed using AT%XSYSTEMMMODE=<params>,<preference> */
 static const char *const system_mode_params[] = {
-	[LTE_LC_SYSTEM_MODE_NONE]		= "0,0,0",
 	[LTE_LC_SYSTEM_MODE_LTEM]		= "1,0,0",
 	[LTE_LC_SYSTEM_MODE_NBIOT]		= "0,1,0",
 	[LTE_LC_SYSTEM_MODE_GPS]		= "0,0,1",
@@ -199,9 +215,6 @@ static void at_handler_cereg(const char *response)
 		break;
 	case LTE_LC_NW_REG_REGISTERED_ROAMING:
 		LTE_LC_TRACE(LTE_LC_TRACE_NW_REG_REGISTERED_ROAMING);
-		break;
-	case LTE_LC_NW_REG_REGISTERED_EMERGENCY:
-		LTE_LC_TRACE(LTE_LC_TRACE_NW_REG_REGISTERED_EMERGENCY);
 		break;
 	case LTE_LC_NW_REG_UICC_FAIL:
 		LTE_LC_TRACE(LTE_LC_TRACE_NW_REG_UICC_FAIL);
@@ -393,11 +406,9 @@ static void at_handler_ncellmeas(const char *response)
 
 	__ASSERT_NO_MSG(response != NULL);
 
-	if (event_handler_list_is_empty() || !ncellmeas_ongoing) {
+	if (event_handler_list_is_empty()) {
 		/* No need to parse the response if there is no handler
-		 * to receive the parsed data or
-		 * if a measurement is not going/started by using
-		 * lte_lc_neighbor_cell_measurement().
+		 * to receive the parsed data.
 		 */
 		goto exit;
 	}
@@ -444,7 +455,7 @@ static void at_handler_ncellmeas(const char *response)
 		k_free(neighbor_cells);
 	}
 exit:
-	ncellmeas_ongoing = false;
+	k_sem_give(&ncellmeas_idle_sem);
 }
 
 static void at_handler_xmodemsleep(const char *response)
@@ -462,12 +473,14 @@ static void at_handler_xmodemsleep(const char *response)
 		return;
 	}
 
-	/* Link controller only supports PSM, RF inactivity and flight mode
-	 * modem sleep types.
+	/* Link controller only supports PSM, RF inactivity, limited service, flight mode
+	 * and proprietary PSM modem sleep types.
 	 */
 	if ((evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_PSM) &&
 		(evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_RF_INACTIVITY) &&
-		(evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_FLIGHT_MODE)) {
+		(evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_LIMITED_SERVICE) &&
+		(evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_FLIGHT_MODE) &&
+		(evt.modem_sleep.type != LTE_LC_MODEM_SLEEP_PROPRIETARY_PSM)) {
 		return;
 	}
 
@@ -585,7 +598,7 @@ static int init_and_config(void)
 		return err;
 	}
 
-	if (IS_ENABLED(CONFIG_LTE_NETWORK_DEFAULT)) {
+	if (IS_ENABLED(CONFIG_LTE_NETWORK_MODE_DEFAULT)) {
 		sys_mode_target = sys_mode_current;
 
 		LOG_DBG("Default system mode is used: %d", sys_mode_current);
@@ -668,7 +681,7 @@ static int connect_lte(bool blocking)
 		}
 
 		/* Change the modem sys-mode only if it's not running or is meant to change */
-		if (!IS_ENABLED(CONFIG_LTE_NETWORK_DEFAULT) &&
+		if (!IS_ENABLED(CONFIG_LTE_NETWORK_MODE_DEFAULT) &&
 		    ((current_func_mode == LTE_LC_FUNC_MODE_POWER_OFF) ||
 		     (current_func_mode == LTE_LC_FUNC_MODE_OFFLINE))) {
 			err = lte_lc_system_mode_set(sys_mode_target, mode_pref_current);
@@ -716,7 +729,7 @@ exit:
 	return err;
 }
 
-static int init_and_connect(const struct device *unused)
+static int init_and_connect(void)
 {
 	int err;
 
@@ -726,6 +739,11 @@ static int init_and_connect(const struct device *unused)
 	}
 
 	return connect_lte(true);
+}
+
+static int feaconf_write(enum feaconf_feat feat, bool state)
+{
+	return nrf_modem_at_printf("AT%%FEACONF=%d,%d,%u", FEACONF_OPER_WRITE, feat, state);
 }
 
 /* Public API */
@@ -769,9 +787,7 @@ int lte_lc_connect(void)
 
 int lte_lc_init_and_connect(void)
 {
-	const struct device *x = 0;
-
-	return init_and_connect(x);
+	return init_and_connect();
 }
 
 int lte_lc_connect_async(lte_lc_evt_handler_t handler)
@@ -971,6 +987,15 @@ int lte_lc_psm_get(int *tau, int *active_time)
 	return 0;
 }
 
+int lte_lc_proprietary_psm_req(bool enable)
+{
+	if (feaconf_write(FEACONF_FEAT_PROPRIETARY_PSM, enable) != 0) {
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
 int lte_lc_edrx_param_set(enum lte_lc_lte_mode mode, const char *edrx)
 {
 	char *edrx_param;
@@ -1077,6 +1102,30 @@ int lte_lc_edrx_req(bool enable)
 	return 0;
 }
 
+int lte_lc_edrx_get(struct lte_lc_edrx_cfg *edrx_cfg)
+{
+	int err;
+	char response[48];
+
+	if (edrx_cfg == NULL) {
+		return -EINVAL;
+	}
+
+	err = nrf_modem_at_cmd(response, sizeof(response), "AT+CEDRXRDP");
+	if (err) {
+		LOG_ERR("Failed to request eDRX parameters, error: %d", err);
+		return -EFAULT;
+	}
+
+	err = parse_edrx(response, edrx_cfg);
+	if (err) {
+		LOG_ERR("Failed to parse eDRX parameters, error: %d", err);
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
 int lte_lc_rai_req(bool enable)
 {
 	int err;
@@ -1171,7 +1220,6 @@ int lte_lc_system_mode_set(enum lte_lc_system_mode mode,
 	int err;
 
 	switch (mode) {
-	case LTE_LC_SYSTEM_MODE_NONE:
 	case LTE_LC_SYSTEM_MODE_LTEM:
 	case LTE_LC_SYSTEM_MODE_LTEM_GPS:
 	case LTE_LC_SYSTEM_MODE_NBIOT:
@@ -1240,9 +1288,6 @@ int lte_lc_system_mode_get(enum lte_lc_system_mode *mode,
 		       (gps_mode ? BIT(AT_XSYSTEMMODE_READ_GPS_INDEX) : 0);
 
 	switch (mode_bitmask) {
-	case 0:
-		*mode = LTE_LC_SYSTEM_MODE_NONE;
-		break;
 	case BIT(AT_XSYSTEMMODE_READ_LTEM_INDEX):
 		*mode = LTE_LC_SYSTEM_MODE_LTEM;
 		break;
@@ -1460,7 +1505,8 @@ int lte_lc_neighbor_cell_measurement(struct lte_lc_ncellmeas_params *params)
 			LTE_LC_NEIGHBOR_SEARCH_TYPE_GCI_EXTENDED_COMPLETE),
 		 "Invalid argument, API does not accept enum values directly anymore");
 
-	if (ncellmeas_ongoing) {
+	if (k_sem_take(&ncellmeas_idle_sem, K_SECONDS(1)) != 0) {
+		LOG_WRN("Neighbor cell measurement already in progress");
 		return -EINPROGRESS;
 	}
 
@@ -1492,9 +1538,9 @@ int lte_lc_neighbor_cell_measurement(struct lte_lc_ncellmeas_params *params)
 
 	if (err) {
 		err = -EFAULT;
+		k_sem_give(&ncellmeas_idle_sem);
 	} else {
 		ncellmeas_params = used_params;
-		ncellmeas_ongoing = true;
 	}
 
 	return err;
@@ -1507,7 +1553,8 @@ int lte_lc_neighbor_cell_measurement_cancel(void)
 	if (err) {
 		err = -EFAULT;
 	}
-	ncellmeas_ongoing = false;
+
+	k_sem_give(&ncellmeas_idle_sem);
 
 	return err;
 }
@@ -1611,7 +1658,17 @@ int lte_lc_conn_eval_params_get(struct lte_lc_conn_eval_params *params)
 
 int lte_lc_modem_events_enable(void)
 {
-	return nrf_modem_at_printf(AT_MDMEV_ENABLE) ? -EFAULT : 0;
+	/* First try to enable both warning and informational type events, which is only supported
+	 * by modem firmware versions >= 2.0.0.
+	 * If that fails, try to enable the legacy set of events.
+	 */
+	if (nrf_modem_at_printf(AT_MDMEV_ENABLE_2)) {
+		if (nrf_modem_at_printf(AT_MDMEV_ENABLE_1)) {
+			return -EFAULT;
+		}
+	}
+
+	return 0;
 }
 
 int lte_lc_modem_events_disable(void)
@@ -1815,8 +1872,3 @@ int lte_lc_factory_reset(enum lte_lc_factory_reset_type type)
 {
 	return nrf_modem_at_printf("AT%%XFACTORYRESET=%d", type) ? -EFAULT : 0;
 }
-
-#if defined(CONFIG_LTE_AUTO_INIT_AND_CONNECT)
-SYS_INIT(init_and_connect,
-		  APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
-#endif /* CONFIG_LTE_AUTO_INIT_AND_CONNECT */

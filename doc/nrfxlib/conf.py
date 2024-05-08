@@ -1,7 +1,12 @@
+#
+# Copyright (c) 2023 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
 # nrfxlib documentation build configuration file
 
 import os
-import re
 from pathlib import Path
 import sys
 
@@ -21,7 +26,7 @@ NRFXLIB_BASE = utils.get_projdir("nrfxlib")
 project = "nrfxlib"
 copyright = "2019-2023, Nordic Semiconductor"
 author = "Nordic Semiconductor"
-version = release = "2.3.0"
+version = release = "2.5.2"
 
 sys.path.insert(0, str(ZEPHYR_BASE / "doc" / "_extensions"))
 sys.path.insert(0, str(NRF_BASE / "doc" / "_extensions"))
@@ -33,7 +38,6 @@ extensions = [
     "inventory_builder",
     "zephyr.kconfig",
     "zephyr.warnings_filter",
-    "ncs_cache",
     "zephyr.external_content",
     "zephyr.doxyrunner",
 ]
@@ -86,21 +90,6 @@ doxyrunner_fmt_vars = {
     "OUTPUT_DIRECTORY": str(doxyrunner_outdir),
 }
 
-# create mbedtls config header (needed for Doxygen)
-doxyrunner_outdir.mkdir(exist_ok=True)
-
-fin_path = NRFXLIB_BASE / "nrf_security" / "configs" / "legacy_crypto_config.h.template"
-fout_path = doxyrunner_outdir / "mbedtls_doxygen_config.h"
-
-with open(fin_path) as fin, open(fout_path, "w") as fout:
-    fout.write(
-        re.sub(
-            r"#cmakedefine ([A-Z0-9_-]+)",
-            r"#define \1",
-            fin.read()
-        )
-    )
-
 # Options for breathe ----------------------------------------------------------
 
 breathe_projects = {"nrfxlib": str(doxyrunner_outdir / "xml")}
@@ -112,15 +101,9 @@ breathe_separate_member_pages = True
 
 external_content_contents = [(NRFXLIB_BASE, "**/*.rst"), (NRFXLIB_BASE, "**/doc/")]
 
-# Options for ncs_cache --------------------------------------------------------
-
-ncs_cache_docset = "nrfxlib"
-ncs_cache_build_dir = utils.get_builddir()
-ncs_cache_config = NRF_BASE / "doc" / "cache.yml"
-ncs_cache_manifest = NRF_BASE / "west.yml"
-
 
 def setup(app):
     app.add_css_file("css/nrfxlib.css")
 
-    utils.add_google_analytics(app)
+    utils.add_google_analytics(app, html_theme_options)
+    utils.add_announcement_banner(html_theme_options)

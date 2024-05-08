@@ -12,18 +12,19 @@
 #include "host_rpu_umac_if.h"
 #include "hal_api.h"
 #include "fmac_structs.h"
+#include "fmac_util.h"
 
-struct host_rpu_msg *umac_cmd_alloc(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+struct host_rpu_msg *umac_cmd_alloc(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 				    int type,
 				    int len)
 {
 	struct host_rpu_msg *umac_cmd = NULL;
 
-	umac_cmd = wifi_nrf_osal_mem_zalloc(fmac_dev_ctx->fpriv->opriv,
+	umac_cmd = nrf_wifi_osal_mem_zalloc(fmac_dev_ctx->fpriv->opriv,
 					    sizeof(*umac_cmd) + len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: Failed to allocate UMAC cmd\n",
 				      __func__);
 		goto out;
@@ -37,18 +38,18 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_cfg(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_cfg(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 				void *params,
 				int len)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 
 	if (!fmac_dev_ctx->fw_init_done) {
 		struct nrf_wifi_umac_hdr *umac_hdr = NULL;
 
 		umac_hdr = (struct nrf_wifi_umac_hdr *)params;
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: UMAC buff config not yet done(%d)\n",
 				      __func__,
 				      umac_hdr->cmd_evnt);
@@ -60,27 +61,32 @@ enum wifi_nrf_status umac_cmd_cfg(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
 	}
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      umac_cmd->msg,
 			      params,
 			      len);
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
+
+	nrf_wifi_osal_log_dbg(fmac_dev_ctx->fpriv->opriv,
+			      "%s: Command %d sent to RPU\n",
+			      __func__,
+			      ((struct nrf_wifi_umac_hdr *)params)->cmd_evnt);
 
 out:
 	return status;
 }
 
 
-enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_init(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 #ifndef CONFIG_NRF700X_RADIO_TEST
 				   unsigned char *rf_params,
 				   bool rf_params_valid,
@@ -89,12 +95,18 @@ enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 #ifdef CONFIG_NRF_WIFI_LOW_POWER
 				   int sleep_type,
 #endif /* CONFIG_NRF_WIFI_LOW_POWER */
-				   unsigned int phy_calib)
+				   unsigned int phy_calib,
+				   enum op_band op_band,
+				   bool beamforming,
+				   struct nrf_wifi_tx_pwr_ctrl_params *tx_pwr_ctrl_params)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_sys_init *umac_cmd_data = NULL;
 	unsigned int len = 0;
+	struct nrf_wifi_fmac_priv_def *def_priv = NULL;
+
+	def_priv = wifi_fmac_priv(fmac_dev_ctx->fpriv);
 
 	len = sizeof(*umac_cmd_data);
 
@@ -103,7 +115,7 @@ enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -118,7 +130,7 @@ enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 	umac_cmd_data->sys_params.rf_params_valid = rf_params_valid;
 
 	if (rf_params_valid) {
-		wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 				      umac_cmd_data->sys_params.rf_params,
 				      rf_params,
 				      NRF_WIFI_RF_PARAMS_SIZE);
@@ -133,16 +145,20 @@ enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 #ifdef CONFIG_NRF_WIFI_LOW_POWER
 	umac_cmd_data->sys_params.sleep_enable = sleep_type;
 #endif /* CONFIG_NRF_WIFI_LOW_POWER */
-	wifi_nrf_osal_log_info(fmac_dev_ctx->fpriv->opriv, "RPU LPM type: %s\n",
+#ifdef CONFIG_NRF700X_TCP_IP_CHECKSUM_OFFLOAD
+	umac_cmd_data->tcp_ip_checksum_offload = 1;
+#endif /* CONFIG_NRF700X_TCP_IP_CHECKSUM_OFFLOAD */
+
+	nrf_wifi_osal_log_dbg(fmac_dev_ctx->fpriv->opriv, "RPU LPM type: %s\n",
 		umac_cmd_data->sys_params.sleep_enable == 2 ? "HW" :
 		umac_cmd_data->sys_params.sleep_enable == 1 ? "SW" : "DISABLED");
 #ifndef CONFIG_NRF700X_RADIO_TEST
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      umac_cmd_data->rx_buf_pools,
-			      fmac_dev_ctx->fpriv->rx_buf_pools,
+			      def_priv->rx_buf_pools,
 			      sizeof(umac_cmd_data->rx_buf_pools));
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      &umac_cmd_data->data_config_params,
 			      config,
 			      sizeof(umac_cmd_data->data_config_params));
@@ -154,9 +170,29 @@ enum wifi_nrf_status umac_cmd_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 	umac_cmd_data->temp_vbat_config_params.vth_low = NRF_WIFI_VBAT_LOW;
 	umac_cmd_data->temp_vbat_config_params.vth_hi = NRF_WIFI_VBAT_HIGH;
 	umac_cmd_data->temp_vbat_config_params.temp_threshold = NRF_WIFI_TEMP_CALIB_THRESHOLD;
+	umac_cmd_data->temp_vbat_config_params.vth_very_low = NRF_WIFI_VBAT_VERYLOW;
 #endif /* !CONFIG_NRF700X_RADIO_TEST */
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	umac_cmd_data->op_band = op_band;
+
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+			      &umac_cmd_data->tx_pwr_ctrl_params,
+			      tx_pwr_ctrl_params,
+			      sizeof(umac_cmd_data->tx_pwr_ctrl_params));
+
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+					umac_cmd_data->country_code,
+					CONFIG_NRF700X_REG_DOMAIN,
+					NRF_WIFI_COUNTRY_CODE_LEN);
+
+#ifdef CONFIG_NRF700X_RPU_EXTEND_TWT_SP
+	 umac_cmd_data->feature_flags |= TWT_EXTEND_SP_EDCA;
+#endif
+	if (!beamforming) {
+		umac_cmd_data->disable_beamforming = 1;
+	}
+
+	 status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 
@@ -165,9 +201,9 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_deinit(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx)
+enum nrf_wifi_status umac_cmd_deinit(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_sys_deinit *umac_cmd_data = NULL;
 	unsigned int len = 0;
@@ -177,7 +213,7 @@ enum wifi_nrf_status umac_cmd_deinit(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx)
 				  NRF_WIFI_HOST_RPU_MSG_TYPE_SYSTEM,
 				  len);
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -185,7 +221,7 @@ enum wifi_nrf_status umac_cmd_deinit(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx)
 	umac_cmd_data = (struct nrf_wifi_cmd_sys_deinit *)(umac_cmd->msg);
 	umac_cmd_data->sys_head.cmd_event = NRF_WIFI_CMD_DEINIT;
 	umac_cmd_data->sys_head.len = len;
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 out:
@@ -193,10 +229,10 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_btcoex(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_btcoex(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 				void *cmd, unsigned int cmd_len)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_coex_config *umac_cmd_data = NULL;
 	int len = 0;
@@ -208,7 +244,7 @@ enum wifi_nrf_status umac_cmd_btcoex(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -220,12 +256,12 @@ enum wifi_nrf_status umac_cmd_btcoex(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
 	umac_cmd_data->sys_head.len = len;
 	umac_cmd_data->coex_config_info.len = cmd_len;
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      umac_cmd_data->coex_config_info.coex_cmd,
 			      cmd,
 			      cmd_len);
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 out:
@@ -234,7 +270,7 @@ out:
 
 }
 
-enum wifi_nrf_status umac_cmd_he_ltf_gi(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_he_ltf_gi(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 					unsigned char he_ltf,
 					unsigned char he_gi,
 					unsigned char enabled)
@@ -242,7 +278,7 @@ enum wifi_nrf_status umac_cmd_he_ltf_gi(struct wifi_nrf_fmac_dev_ctx *fmac_dev_c
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_he_gi_ltf_config *umac_cmd_data = NULL;
 	int len = 0;
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 
 	len = sizeof(*umac_cmd_data);
 
@@ -251,7 +287,7 @@ enum wifi_nrf_status umac_cmd_he_ltf_gi(struct wifi_nrf_fmac_dev_ctx *fmac_dev_c
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -263,22 +299,22 @@ enum wifi_nrf_status umac_cmd_he_ltf_gi(struct wifi_nrf_fmac_dev_ctx *fmac_dev_c
 	umac_cmd_data->sys_head.len = len;
 
 	if (enabled) {
-		wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 				      &umac_cmd_data->he_ltf,
 				      &he_ltf,
 				      sizeof(he_ltf));
-		wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 				      &umac_cmd_data->he_gi_type,
 				      &he_gi,
 				      sizeof(he_gi));
 	}
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      &umac_cmd_data->enable,
 			      &enabled,
 			      sizeof(enabled));
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 out:
@@ -286,13 +322,13 @@ out:
 }
 
 #ifdef CONFIG_NRF700X_RADIO_TEST
-enum wifi_nrf_status umac_cmd_prog_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_prog_init(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 					struct nrf_wifi_radio_test_init_info *init_params)
 {
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_radio_test_init *umac_cmd_data = NULL;
 	int len = 0;
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 
 	len = sizeof(*umac_cmd_data);
 
@@ -301,7 +337,7 @@ enum wifi_nrf_status umac_cmd_prog_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_c
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -312,12 +348,12 @@ enum wifi_nrf_status umac_cmd_prog_init(struct wifi_nrf_fmac_dev_ctx *fmac_dev_c
 	umac_cmd_data->sys_head.cmd_event = NRF_WIFI_CMD_RADIO_TEST_INIT;
 	umac_cmd_data->sys_head.len = len;
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      &umac_cmd_data->conf,
 			      init_params,
 			      sizeof(umac_cmd_data->conf));
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 out:
@@ -325,13 +361,13 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_prog_tx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_prog_tx(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 				      struct rpu_conf_params *params)
 {
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_mode_params *umac_cmd_data = NULL;
 	int len = 0;
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 
 	len = sizeof(*umac_cmd_data);
 
@@ -340,7 +376,7 @@ enum wifi_nrf_status umac_cmd_prog_tx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -351,12 +387,12 @@ enum wifi_nrf_status umac_cmd_prog_tx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx
 	umac_cmd_data->sys_head.cmd_event = NRF_WIFI_CMD_TX;
 	umac_cmd_data->sys_head.len = len;
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      &umac_cmd_data->conf,
 			      params,
 			      sizeof(umac_cmd_data->conf));
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 
@@ -365,13 +401,13 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_prog_rx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_prog_rx(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 				      struct rpu_conf_rx_radio_test_params *rx_params)
 {
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_rx *umac_cmd_data = NULL;
 	int len = 0;
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 
 	len = sizeof(*umac_cmd_data);
 
@@ -380,7 +416,7 @@ enum wifi_nrf_status umac_cmd_prog_rx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -391,12 +427,12 @@ enum wifi_nrf_status umac_cmd_prog_rx(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx
 	umac_cmd_data->sys_head.cmd_event = NRF_WIFI_CMD_RX;
 	umac_cmd_data->sys_head.len = len;
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      &umac_cmd_data->conf,
 			      rx_params,
 			      sizeof(umac_cmd_data->conf));
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 
@@ -405,11 +441,11 @@ out:
 }
 
 
-enum wifi_nrf_status umac_cmd_prog_rf_test(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_prog_rf_test(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 					   void *rf_test_params,
 					   unsigned int rf_test_params_sz)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_rftest *umac_cmd_data = NULL;
 	int len = 0;
@@ -421,7 +457,7 @@ enum wifi_nrf_status umac_cmd_prog_rf_test(struct wifi_nrf_fmac_dev_ctx *fmac_de
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -432,14 +468,14 @@ enum wifi_nrf_status umac_cmd_prog_rf_test(struct wifi_nrf_fmac_dev_ctx *fmac_de
 	umac_cmd_data->sys_head.cmd_event = NRF_WIFI_CMD_RF_TEST;
 	umac_cmd_data->sys_head.len = len;
 
-	wifi_nrf_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
+	nrf_wifi_osal_mem_cpy(fmac_dev_ctx->fpriv->opriv,
 			      (void *)umac_cmd_data->rf_test_info.rfcmd,
 			      rf_test_params,
 			      rf_test_params_sz);
 
 	umac_cmd_data->rf_test_info.len = rf_test_params_sz;
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 
@@ -449,13 +485,13 @@ out:
 #endif /* CONFIG_NRF700X_RADIO_TEST */
 
 
-enum wifi_nrf_status umac_cmd_prog_stats_get(struct wifi_nrf_fmac_dev_ctx *fmac_dev_ctx,
+enum nrf_wifi_status umac_cmd_prog_stats_get(struct nrf_wifi_fmac_dev_ctx *fmac_dev_ctx,
 #ifdef CONFIG_NRF700X_RADIO_TEST
 					     int op_mode,
 #endif /* CONFIG_NRF700X_RADIO_TEST */
 					     int stats_type)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	struct host_rpu_msg *umac_cmd = NULL;
 	struct nrf_wifi_cmd_get_stats *umac_cmd_data = NULL;
 	int len = 0;
@@ -467,7 +503,7 @@ enum wifi_nrf_status umac_cmd_prog_stats_get(struct wifi_nrf_fmac_dev_ctx *fmac_
 				  len);
 
 	if (!umac_cmd) {
-		wifi_nrf_osal_log_err(fmac_dev_ctx->fpriv->opriv,
+		nrf_wifi_osal_log_err(fmac_dev_ctx->fpriv->opriv,
 				      "%s: umac_cmd_alloc failed\n",
 				      __func__);
 		goto out;
@@ -482,7 +518,7 @@ enum wifi_nrf_status umac_cmd_prog_stats_get(struct wifi_nrf_fmac_dev_ctx *fmac_
 	umac_cmd_data->op_mode = op_mode;
 #endif /* CONFIG_NRF700X_RADIO_TEST */
 
-	status = wifi_nrf_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
+	status = nrf_wifi_hal_ctrl_cmd_send(fmac_dev_ctx->hal_dev_ctx,
 					    umac_cmd,
 					    (sizeof(*umac_cmd) + len));
 

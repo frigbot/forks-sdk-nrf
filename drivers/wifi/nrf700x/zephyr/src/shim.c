@@ -17,6 +17,7 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/__assert.h>
 
 #include "rpu_hw_if.h"
 #include "shim.h"
@@ -25,7 +26,9 @@
 #include "osal_ops.h"
 #include "qspi_if.h"
 
-LOG_MODULE_REGISTER(wifi_nrf, CONFIG_WIFI_LOG_LEVEL);
+LOG_MODULE_REGISTER(wifi_nrf, CONFIG_WIFI_NRF700X_LOG_LEVEL);
+
+struct zep_shim_intr_priv *intr_priv;
 
 static void *zep_shim_mem_alloc(size_t size)
 {
@@ -47,6 +50,13 @@ static void *zep_shim_mem_cpy(void *dest, const void *src, size_t count)
 static void *zep_shim_mem_set(void *start, int val, size_t size)
 {
 	return memset(start, val, size);
+}
+
+static int zep_shim_mem_cmp(const void *addr1,
+			    const void *addr2,
+			    size_t size)
+{
+	return memcmp(addr1, addr2, size);
 }
 
 static unsigned int zep_shim_qspi_read_reg32(void *priv, unsigned long addr)
@@ -197,6 +207,7 @@ struct nwb {
 	int hostbuffer;
 	void *cleanup_ctx;
 	void (*cleanup_cb)();
+	unsigned char priority;
 };
 
 static void *zep_shim_nbuf_alloc(unsigned int size)
@@ -292,6 +303,13 @@ static void *zep_shim_nbuf_data_pull(void *nbuf, unsigned int size)
 	return nwb->data;
 }
 
+static unsigned char zep_shim_nbuf_get_priority(void *nbuf)
+{
+	struct nwb *nwb = (struct nwb *)nbuf;
+
+	return nwb->priority;
+}
+
 #include <zephyr/net/ethernet.h>
 #include <zephyr/net/net_core.h>
 
@@ -315,6 +333,8 @@ void *net_pkt_to_nbuf(struct net_pkt *pkt)
 
 	net_pkt_read(pkt, data, len);
 
+	nwb->priority = net_pkt_priority(pkt);
+
 	return nwb;
 }
 
@@ -333,11 +353,7 @@ void *net_pkt_from_nbuf(void *iface, void *frm)
 
 	data = zep_shim_nbuf_data_get(nwb);
 
-	/* FIXME: Adding a delay in case we run out of buffers is a good idea, but for some
-	 * reason this causes a crash in high traffic conditions with "wifi status" being run
-	 * in the background. Need to investigate further.
-	 */
-	pkt = net_pkt_rx_alloc_with_buffer(iface, len, AF_UNSPEC, 0, K_NO_WAIT);
+	pkt = net_pkt_rx_alloc_with_buffer(iface, len, AF_UNSPEC, 0, K_MSEC(100));
 
 	if (!pkt) {
 		goto out;
@@ -433,6 +449,19 @@ static void zep_shim_llist_add_node_tail(void *llist, void *llist_node)
 	zep_llist->len += 1;
 }
 
+static void zep_shim_llist_add_node_head(void *llist, void *llist_node)
+{
+	struct zep_shim_llist *zep_llist = NULL;
+	struct zep_shim_llist_node *zep_node = NULL;
+
+	zep_llist = (struct zep_shim_llist *)llist;
+	zep_node = (struct zep_shim_llist_node *)llist_node;
+
+	sys_dlist_prepend(&zep_llist->head, &zep_node->head);
+
+	zep_llist->len += 1;
+}
+
 static void *zep_shim_llist_get_node_head(void *llist)
 {
 	struct zep_shim_llist_node *zep_head_node = NULL;
@@ -486,9 +515,9 @@ static unsigned int zep_shim_llist_len(void *llist)
 	return zep_llist->len;
 }
 
-static void *zep_shim_work_alloc(void)
+static void *zep_shim_work_alloc(int type)
 {
-	return work_alloc();
+	return work_alloc(type);
 }
 
 static void zep_shim_work_free(void *item)
@@ -526,16 +555,11 @@ static unsigned int zep_shim_time_elapsed_us(unsigned long start_time_us)
 	return curr_time_us - start_time_us;
 }
 
-static enum wifi_nrf_status zep_shim_bus_qspi_dev_init(void *os_qspi_dev_ctx)
+static enum nrf_wifi_status zep_shim_bus_qspi_dev_init(void *os_qspi_dev_ctx)
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
-	struct qspi_dev *dev = NULL;
+	ARG_UNUSED(os_qspi_dev_ctx);
 
-	dev = os_qspi_dev_ctx;
-
-	status = WIFI_NRF_STATUS_SUCCESS;
-
-	return status;
+	return NRF_WIFI_STATUS_SUCCESS;
 }
 
 static void zep_shim_bus_qspi_dev_deinit(void *os_qspi_dev_ctx)
@@ -549,15 +573,28 @@ static void zep_shim_bus_qspi_dev_deinit(void *os_qspi_dev_ctx)
 
 static void *zep_shim_bus_qspi_dev_add(void *os_qspi_priv, void *osal_qspi_dev_ctx)
 {
-	struct zep_shim_bus_qspi_priv *zep_qspi_priv = NULL;
-	struct qspi_dev *qdev = NULL;
+	struct zep_shim_bus_qspi_priv *zep_qspi_priv = os_qspi_priv;
+	struct qspi_dev *qdev = qspi_dev();
+	int ret;
+	enum nrf_wifi_status status;
 
-	zep_qspi_priv = os_qspi_priv;
+	ret = rpu_init();
+	if (ret) {
+		LOG_ERR("%s: RPU init failed with error %d", __func__, ret);
+		return NULL;
+	}
 
-	rpu_enable();
+	status = qdev->init(qspi_defconfig());
+	if (status != NRF_WIFI_STATUS_SUCCESS) {
+		LOG_ERR("%s: QSPI device init failed\n", __func__);
+		return NULL;
+	}
 
-	qdev = qspi_dev();
-
+	ret = rpu_enable();
+	if (ret) {
+		LOG_ERR("%s: RPU enable failed with error %d\n", __func__, ret);
+		return NULL;
+	}
 	zep_qspi_priv->qspi_dev = qdev;
 	zep_qspi_priv->dev_added = true;
 
@@ -571,6 +608,7 @@ static void zep_shim_bus_qspi_dev_rem(void *os_qspi_dev_ctx)
 	dev = os_qspi_dev_ctx;
 
 	/* TODO: Make qspi_dev a dynamic instance and remove it here */
+	rpu_disable();
 }
 
 static void *zep_shim_bus_qspi_init(void)
@@ -618,7 +656,7 @@ static int zep_shim_bus_qspi_ps_status(void *os_qspi_priv)
 #endif /* CONFIG_NRF_WIFI_LOW_POWER */
 
 static void zep_shim_bus_qspi_dev_host_map_get(void *os_qspi_dev_ctx,
-					       struct wifi_nrf_osal_host_map *host_map)
+					       struct nrf_wifi_osal_host_map *host_map)
 {
 	if (!os_qspi_dev_ctx || !host_map) {
 		LOG_ERR("%s: Invalid parameters\n", __func__);
@@ -630,11 +668,7 @@ static void zep_shim_bus_qspi_dev_host_map_get(void *os_qspi_dev_ctx,
 
 static void irq_work_handler(struct k_work *work)
 {
-	struct zep_shim_intr_priv *intr_priv = NULL;
 	int ret = 0;
-
-	intr_priv =
-		(struct zep_shim_intr_priv *)CONTAINER_OF(work, struct zep_shim_intr_priv, work);
 
 	ret = intr_priv->callbk_fn(intr_priv->callbk_data);
 
@@ -643,21 +677,24 @@ static void irq_work_handler(struct k_work *work)
 	}
 }
 
+
+extern struct k_work_q zep_wifi_intr_q;
+
 static void zep_shim_irq_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	struct zep_shim_intr_priv *intr_priv = NULL;
+	ARG_UNUSED(cb);
+	ARG_UNUSED(pins);
 
-	intr_priv = (struct zep_shim_intr_priv *)cb;
-
-	k_work_schedule_for_queue(&zep_wifi_drv_q, &intr_priv->work, K_NO_WAIT);
+	k_work_schedule_for_queue(&zep_wifi_intr_q, &intr_priv->work, K_NO_WAIT);
 }
 
-static enum wifi_nrf_status zep_shim_bus_qspi_intr_reg(void *os_dev_ctx, void *callbk_data,
+static enum nrf_wifi_status zep_shim_bus_qspi_intr_reg(void *os_dev_ctx, void *callbk_data,
 						       int (*callbk_fn)(void *callbk_data))
 {
-	enum wifi_nrf_status status = WIFI_NRF_STATUS_FAIL;
-	struct zep_shim_intr_priv *intr_priv = NULL;
+	enum nrf_wifi_status status = NRF_WIFI_STATUS_FAIL;
 	int ret = -1;
+
+	ARG_UNUSED(os_dev_ctx);
 
 	intr_priv = k_calloc(sizeof(*intr_priv), sizeof(char));
 
@@ -680,7 +717,7 @@ static enum wifi_nrf_status zep_shim_bus_qspi_intr_reg(void *os_dev_ctx, void *c
 		goto out;
 	}
 
-	status = WIFI_NRF_STATUS_SUCCESS;
+	status = NRF_WIFI_STATUS_SUCCESS;
 
 out:
 	return status;
@@ -688,6 +725,14 @@ out:
 
 static void zep_shim_bus_qspi_intr_unreg(void *os_qspi_dev_ctx)
 {
+	ARG_UNUSED(os_qspi_dev_ctx);
+
+	k_work_cancel_delayable(&intr_priv->work);
+
+	rpu_irq_remove(&intr_priv->gpio_cb_data);
+
+	k_free(intr_priv);
+	intr_priv = NULL;
 }
 
 #ifdef CONFIG_NRF_WIFI_LOW_POWER
@@ -727,12 +772,44 @@ static void zep_shim_timer_kill(void *timer)
 }
 #endif /* CONFIG_NRF_WIFI_LOW_POWER */
 
-static const struct wifi_nrf_osal_ops wifi_nrf_os_zep_ops = {
+static void zep_shim_assert(int test_val, int val, enum nrf_wifi_assert_op_type op, char *msg)
+{
+	switch (op) {
+	case NRF_WIFI_ASSERT_EQUAL_TO:
+		NET_ASSERT(test_val == val, "%s", msg);
+	break;
+	case NRF_WIFI_ASSERT_NOT_EQUAL_TO:
+		NET_ASSERT(test_val != val, "%s", msg);
+	break;
+	case NRF_WIFI_ASSERT_LESS_THAN:
+		NET_ASSERT(test_val < val, "%s", msg);
+	break;
+	case NRF_WIFI_ASSERT_LESS_THAN_EQUAL_TO:
+		NET_ASSERT(test_val <= val, "%s", msg);
+	break;
+	case NRF_WIFI_ASSERT_GREATER_THAN:
+		NET_ASSERT(test_val > val, "%s", msg);
+	break;
+	case NRF_WIFI_ASSERT_GREATER_THAN_EQUAL_TO:
+		NET_ASSERT(test_val >= val, "%s", msg);
+	break;
+	default:
+		LOG_ERR("%s: Invalid assertion operation\n", __func__);
+	}
+}
+
+static unsigned int zep_shim_strlen(const void *str)
+{
+	return strlen(str);
+}
+
+static const struct nrf_wifi_osal_ops nrf_wifi_os_zep_ops = {
 	.mem_alloc = zep_shim_mem_alloc,
 	.mem_zalloc = zep_shim_mem_zalloc,
 	.mem_free = k_free,
 	.mem_cpy = zep_shim_mem_cpy,
 	.mem_set = zep_shim_mem_set,
+	.mem_cmp = zep_shim_mem_cmp,
 
 	.qspi_read_reg32 = zep_shim_qspi_read_reg32,
 	.qspi_write_reg32 = zep_shim_qspi_write_reg32,
@@ -761,6 +838,7 @@ static const struct wifi_nrf_osal_ops wifi_nrf_os_zep_ops = {
 	.llist_free = zep_shim_llist_free,
 	.llist_init = zep_shim_llist_init,
 	.llist_add_node_tail = zep_shim_llist_add_node_tail,
+	.llist_add_node_head = zep_shim_llist_add_node_head,
 	.llist_get_node_head = zep_shim_llist_get_node_head,
 	.llist_get_node_nxt = zep_shim_llist_get_node_nxt,
 	.llist_del_node = zep_shim_llist_del_node,
@@ -775,6 +853,7 @@ static const struct wifi_nrf_osal_ops wifi_nrf_os_zep_ops = {
 	.nbuf_data_put = zep_shim_nbuf_data_put,
 	.nbuf_data_push = zep_shim_nbuf_data_push,
 	.nbuf_data_pull = zep_shim_nbuf_data_pull,
+	.nbuf_get_priority = zep_shim_nbuf_get_priority,
 
 	.tasklet_alloc = zep_shim_work_alloc,
 	.tasklet_free = zep_shim_work_free,
@@ -808,9 +887,12 @@ static const struct wifi_nrf_osal_ops wifi_nrf_os_zep_ops = {
 	.bus_qspi_ps_wake = zep_shim_bus_qspi_ps_wake,
 	.bus_qspi_ps_status = zep_shim_bus_qspi_ps_status,
 #endif /* CONFIG_NRF_WIFI_LOW_POWER */
+
+	.assert = zep_shim_assert,
+	.strlen = zep_shim_strlen,
 };
 
-const struct wifi_nrf_osal_ops *get_os_ops(void)
+const struct nrf_wifi_osal_ops *get_os_ops(void)
 {
-	return &wifi_nrf_os_zep_ops;
+	return &nrf_wifi_os_zep_ops;
 }

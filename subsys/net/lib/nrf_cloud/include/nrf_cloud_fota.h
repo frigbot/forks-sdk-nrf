@@ -24,6 +24,7 @@ enum nrf_cloud_fota_evt_id {
 	NRF_CLOUD_FOTA_EVT_ERASE_DONE,
 	NRF_CLOUD_FOTA_EVT_DL_PROGRESS,
 	NRF_CLOUD_FOTA_EVT_BLE_JOB_RCVD,
+	NRF_CLOUD_FOTA_EVT_JOB_RCVD
 };
 
 /** @brief FOTA error detail. */
@@ -46,12 +47,24 @@ enum nrf_cloud_fota_error {
 	NRF_CLOUD_FOTA_ERROR_BAD_TYPE,
 };
 
-/** @brief FOTA info for a BLE job */
+/** @brief FOTA job data */
+struct nrf_cloud_fota_job {
+	enum nrf_cloud_fota_status status;
+	struct nrf_cloud_fota_job_info info;
+	enum nrf_cloud_fota_error error;
+	/* Download progress percent, 0-100. */
+	int dl_progress;
+	/* Tracking for CONFIG_NRF_CLOUD_FOTA_PROGRESS_PCT_INCREMENT */
+	int sent_dl_progress;
+};
+
+/** @brief BLE FOTA job data */
 struct nrf_cloud_fota_ble_job {
 	bt_addr_t ble_id;
 	struct nrf_cloud_fota_job_info info;
 	enum nrf_cloud_fota_error error;
-	int dl_progress; /* Download progress percent, 0-100. */
+	/* Download progress percent, 0-100. */
+	int dl_progress;
 };
 
 /** @brief FOTA event data provided to @ref nrf_cloud_fota_callback_t */
@@ -162,6 +175,9 @@ int nrf_cloud_fota_update_check(void);
 
 /** @brief Check if the device is actively working on a FOTA job. */
 bool nrf_cloud_fota_is_active(void);
+
+/** @brief Check if the device has received FOTA job info. */
+bool nrf_cloud_fota_is_available(void);
 
 /**
  * @brief Set callback for BLE FOTA.

@@ -45,9 +45,10 @@ When the module receives an :c:enum:`APP_EVT_DATA_GET` event and the :c:enum:`AP
 When data sampling has been carried out, the :c:enum:`SENSOR_EVT_ENVIRONMENTAL_DATA_READY` event is sent from the module with the sampled environmental sensor values.
 
 .. note::
-   The nRF9160 DK does not have any external sensors.
+   An nRF91 Series DK does not have any external sensors and battery fuel gauge.
    If the sensor module is queried for sensor data when building for the DK, the event :c:enum:`SENSOR_EVT_ENVIRONMENTAL_NOT_SUPPORTED` is sent out by the module
    upon data sampling.
+   For battery fuel gauge data, :c:enum:`SENSOR_EVT_FUEL_GAUGE_NOT_SUPPORTED` is sent.
 
 Motion activity detection
 =========================
@@ -86,7 +87,7 @@ Motion impact detection
 =======================
 
 Motion impact is detected when the magnitude (root sum squared) of acceleration exceeds the configured threshold value.
-To enable motion impact detection, you must include :kconfig:option:`CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION` when building the application.
+To enable motion impact detection, you must include :ref:`CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION <CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION>` when building the application.
 
 The threshold is configured using the :kconfig:option:`CONFIG_ADXL372_ACTIVITY_THRESHOLD` option.
 The accelerometer records acceleration magnitude when it is in the active mode and reports the peak magnitude once it reverts to the inactive mode.
@@ -103,17 +104,18 @@ Bosch Software Environmental Cluster (BSEC) library
 The sensor module supports integration with the BSEC signal processing library using the external sensors, internal convenience API.
 If enabled, the BSEC library is used instead of the BME680 Zephyr driver to provide sensor readings from the BME680 for temperature, humidity, and atmospheric pressure.
 In addition, the BSEC driver provides an additional sensor reading, indoor air quality (IAQ), which is a metric given in between 0-500 range, which estimates the air quality of the environment.
+In the beginning, the IAQ shows 50 (good air), but it is automatically calibrated over time.
 
-As the BSEC library requires a separate license, it is not a default part of |NCS|, but can be downloaded externally and imported into the |NCS| source tree.
+.. note::
+   Using the BSEC library requires accepting a separate license agreement.
+   For details, see :ref:`bme68x_iaq`.
 
 Perform the following steps to enable BSEC:
 
-1. Download the BSEC library, using the `Bosch BSEC`_ link.
-#. Extract and store the folder containing the library contents in the path specified by :ref:`CONFIG_EXTERNAL_SENSORS_BME680_BSEC_PATH <CONFIG_EXTERNAL_SENSORS_BME680_BSEC_PATH>` option or update the path configuration to reference the library location.
-#. Disable the Zephyr BME680 driver by setting :kconfig:option:`CONFIG_BME680` to false.
-#. Enable the external sensors API BSEC integration layer by enabling :ref:`CONFIG_EXTERNAL_SENSORS_BME680_BSEC <CONFIG_EXTERNAL_SENSORS_BME680_BSEC>` option.
+1. To disable the Zephyr BME680 driver, set the :kconfig:option:`CONFIG_BME680` Kconfig option to false.
+#. To enable the external sensors API BSEC integration layer, use the :ref:`CONFIG_BME68X_IAQ <CONFIG_BME68X_IAQ>` Kconfig option.
 
-Air quality readings are provided with the :c:enumerator:`SENSOR_EVT_ENVIRONMENTAL_DATA_READY` event.
+Air quality readings are provided with the :c:enum:`SENSOR_EVT_ENVIRONMENTAL_DATA_READY` event.
 
 To check and configure the BSEC configuration options, see :ref:`external_sensor_API_BSEC_configurations` section.
 
@@ -135,15 +137,10 @@ CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION
 External sensors API BSEC configurations
 ========================================
 
-.. _CONFIG_EXTERNAL_SENSORS_BME680_BSEC:
+.. _CONFIG_BME68X_IAQ:
 
-CONFIG_EXTERNAL_SENSORS_BME680_BSEC
+CONFIG_BME68X_IAQ
    This option configures the Bosch BSEC library for the BME680.
-
-.. _CONFIG_EXTERNAL_SENSORS_BME680_BSEC_PATH:
-
-CONFIG_EXTERNAL_SENSORS_BME680_BSEC_PATH
-   This option sets the path for the Bosch BSEC library folder.
 
 .. _CONFIG_EXTERNAL_SENSORS_BSEC_SAMPLE_MODE_ULTRA_LOW_POWER:
 
@@ -171,7 +168,8 @@ Module states
 The sensor module has an internal state machine with the following states:
 
 * ``STATE_INIT`` - The initial state of the module in which it awaits its initial configuration from the data module.
-* ``STATE_RUNNING`` - The module is initialized and can be queried for sensor data. It will also send :c:enum:`SENSOR_EVT_MOVEMENT_DATA_READY` on movement.
+* ``STATE_RUNNING`` - The module is initialized and can be queried for sensor data.
+  It will also send :c:enum:`SENSOR_EVT_MOVEMENT_DATA_READY` on movement.
 * ``STATE_SHUTDOWN`` - The module has been shut down after receiving a request from the utility module.
 
 State transitions take place based on events from other modules, such as the app module, data module, and utility module.
